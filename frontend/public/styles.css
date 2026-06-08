@@ -1038,3 +1038,15 @@ button:disabled {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+.guest-banner-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.banner-c-subtext {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  line-height: 1.4;
+}
