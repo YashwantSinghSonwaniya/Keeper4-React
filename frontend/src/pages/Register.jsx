@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useHistory } from "react-router-dom";
+import { registerUser } from "../api";
 
 function Register() {
   const [loading, setLoading] = useState(false);
@@ -17,43 +18,31 @@ function Register() {
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  function handleRegister(e) {
+  async function handleRegister(e) {
     e.preventDefault();
     setError("");
 
-    // Basic validation
     if (form.password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
     }
 
-    // Check if email already registered
-    const existingUser = localStorage.getItem("registeredUser");
-    if (existingUser) {
-      const parsed = JSON.parse(existingUser);
-      if (parsed.email === form.email) {
-        setError("This email is already registered.");
-        return;
-      }
-    }
-
     setLoading(true);
 
-    setTimeout(() => {
-      // Save user credentials to localStorage
-      localStorage.setItem(
-        "registeredUser",
-        JSON.stringify({
-          name: form.name,
-          email: form.email,
-          password: form.password,
-        })
-      );
+    try {
+      const res = await registerUser(form);
 
+      // ✅ Save token and user to localStorage
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
+
+      history.push("/");
+      window.location.reload();
+    } catch (err) {
+      setError(err.response?.data?.error || "Registration failed.");
+    } finally {
       setLoading(false);
-      // Redirect to login after successful registration
-      history.push("/login");
-    }, 1000);
+    }
   }
 
   return (

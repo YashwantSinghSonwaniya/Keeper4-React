@@ -988,3 +988,53 @@ button:disabled {
   background: #e0a800;
   transform: translateY(-1px);
 }
+
+/* ======= FORGOT PASSWORD ======= */
+.forgot-password-link {
+  text-align: center;
+  color: #1976d2;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.forgot-password-link:hover {
+  color: #0d47a1;
+}
+
+.forgot-title {
+  text-align: center;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.forgot-msg {
+  text-align: center;
+  color: #2e7d32;
+  font-size: 13px;
+  background: #f1f8e9;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+/* ======= LOADING ======= */
+.loading {
+  text-align: center;
+  margin: 60px auto;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.loading-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+  opacity: 0.6;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

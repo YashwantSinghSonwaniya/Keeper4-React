@@ -1,9 +1,13 @@
 import React, { useState } from "react";
 import { Link, useHistory } from "react-router-dom";
+import { loginUser } from "../api";
 
 function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -16,37 +20,38 @@ function Login({ onLogin }) {
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
     setError("");
-
-    // Look up saved user
-    const savedUser = localStorage.getItem("registeredUser");
-
-    if (!savedUser) {
-      setError("No account found. Please register first.");
-      return;
-    }
-
-    const parsed = JSON.parse(savedUser);
-
-    // Check credentials
-    if (parsed.email !== form.email || parsed.password !== form.password) {
-      setError("Incorrect email or password.");
-      return;
-    }
-
     setLoading(true);
 
-    setTimeout(() => {
-      // Save logged in session
-      const userData = { name: parsed.name, email: parsed.email };
-      localStorage.setItem("loggedInUser", JSON.stringify(userData));
+    try {
+      const res = await loginUser(form);
 
-      onLogin(userData);
-      setLoading(false);
+      // ✅ Save token and user
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
+
+      onLogin(res.data.user);
       history.push("/");
-    }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.error || "Login failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    setForgotMsg("");
+
+    try {
+      const { forgotPassword } = await import("../api");
+      await forgotPassword({ email: forgotEmail });
+      setForgotMsg("If this email exists, a reset link has been sent.");
+    } catch (err) {
+      setForgotMsg(err.response?.data?.error || "Something went wrong.");
+    }
   }
 
   return (
@@ -63,34 +68,84 @@ function Login({ onLogin }) {
           <span>OR</span>
         </div>
 
-        <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={handleChange}
-            required
-          />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            value={form.password}
-            onChange={handleChange}
-            required
-          />
+        {!showForgot ? (
+          <>
+            <form onSubmit={handleLogin}>
+              <input
+                type="email"
+                name="email"
+                placeholder="Email"
+                value={form.email}
+                onChange={handleChange}
+                required
+              />
+              <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                value={form.password}
+                onChange={handleChange}
+                required
+              />
 
-          {error && <p className="error">{error}</p>}
+              {error && <p className="error">{error}</p>}
 
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
+              <button
+                type="submit"
+                className="auth-btn"
+                disabled={loading}
+              >
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            </form>
 
-        <p>
-          Don't have an account? <Link to="/register">Register</Link>
-        </p>
+            {/* ✅ Forgot password link */}
+            <p
+              className="forgot-password-link"
+              onClick={() => setShowForgot(true)}
+            >
+              Forgot password?
+            </p>
+
+            <p>
+              Don't have an account?{" "}
+              <Link to="/register">Register</Link>
+            </p>
+          </>
+        ) : (
+          <>
+            {/* ✅ Forgot password form */}
+            <form onSubmit={handleForgotPassword}>
+              <p className="forgot-title">Reset your password</p>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                required
+              />
+
+              {forgotMsg && (
+                <p className="forgot-msg">{forgotMsg}</p>
+              )}
+
+              <button type="submit" className="auth-btn">
+                Send Reset Link
+              </button>
+            </form>
+
+            <p
+              className="forgot-password-link"
+              onClick={() => {
+                setShowForgot(false);
+                setForgotMsg("");
+                setForgotEmail("");
+              }}
+            >
+              ← Back to login
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
