@@ -17,8 +17,6 @@ import {
 
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editIndex, setEditIndex] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +28,7 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   const formRef = useRef(null);
 
-  // ✅ Load notes on mount or when login state changes
+  // ✅ Load notes on mount
   useEffect(() => {
     async function loadNotes() {
       setLoading(true);
@@ -42,7 +40,7 @@ function Home({ user, isLoggedIn, onLogout }) {
           console.error("Failed to load notes:", err.message);
         }
       } else {
-        // Guest mode — use localStorage
+        // Guest mode — localStorage only
         const saved = localStorage.getItem("notes_guest");
         setNotes(saved ? JSON.parse(saved) : []);
       }
@@ -51,7 +49,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     loadNotes();
   }, [isLoggedIn]);
 
-  // ✅ Save guest notes to localStorage
+  // ✅ Guest notes still use localStorage
+  // Logged in notes use PostgreSQL — no localStorage needed
   useEffect(() => {
     if (!isLoggedIn) {
       localStorage.setItem("notes_guest", JSON.stringify(notes));
@@ -80,8 +79,12 @@ function Home({ user, isLoggedIn, onLogout }) {
     return title.includes(q) || content.includes(q);
   });
 
-  const pinnedNotes = filteredNotes.filter((n) => n.isPinned || n.is_pinned);
-  const unpinnedNotes = filteredNotes.filter((n) => !n.isPinned && !n.is_pinned);
+  const pinnedNotes = filteredNotes.filter(
+    (n) => n.isPinned || n.is_pinned
+  );
+  const unpinnedNotes = filteredNotes.filter(
+    (n) => !n.isPinned && !n.is_pinned
+  );
 
   // ✅ Add note
   async function addNote(newNote) {
@@ -93,9 +96,10 @@ function Home({ user, isLoggedIn, onLogout }) {
         console.error("Failed to create note:", err.message);
       }
     } else {
+      // Guest mode
       setNotes((prev) => [
-        ...prev,
         { ...newNote, color: "#ffffff", isPinned: false },
+        ...prev,
       ]);
     }
   }
@@ -104,8 +108,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   async function deleteNoteHandler(id) {
     if (isLoggedIn) {
       try {
-        const note = notes.find((n) => n.id === id);
-        await deleteNote(note.id);
+        await deleteNote(id);
         setNotes((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
         console.error("Failed to delete note:", err.message);
@@ -119,12 +122,13 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Open edit modal
   function editNoteHandler(id) {
-    const note = notes.find((n, index) =>
-      isLoggedIn ? n.id === id : index === id
-    );
+    const note = isLoggedIn
+      ? notes.find((n) => n.id === id)
+      : notes[id];
+
     if (!note) return;
 
-    setModalNoteId(isLoggedIn ? note.id : id);
+    setModalNoteId(id);
     setModalNote({
       title: note.title || "",
       content: note.content || "",
@@ -165,22 +169,11 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalNoteId(null);
   }
 
-  function updateNoteHandler(updatedNote) {
-    setNotes((prev) =>
-      prev.map((note, index) =>
-        index === editIndex ? { ...note, ...updatedNote } : note
-      )
-    );
-    setIsEditing(false);
-    setEditIndex(null);
-  }
-
   // ✅ Change color
   async function changeNoteColor(id, color) {
     if (isLoggedIn) {
       try {
-        const note = notes.find((n) => n.id === id);
-        await updateNoteColor(note.id, color);
+        await updateNoteColor(id, color);
         setNotes((prev) =>
           prev.map((n) => (n.id === id ? { ...n, color } : n))
         );
@@ -200,8 +193,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   async function togglePin(id) {
     if (isLoggedIn) {
       try {
-        const note = notes.find((n) => n.id === id);
-        const res = await togglePinNote(note.id);
+        const res = await togglePinNote(id);
         setNotes((prev) =>
           prev.map((n) => (n.id === id ? res.data : n))
         );
@@ -259,8 +251,12 @@ function Home({ user, isLoggedIn, onLogout }) {
             </span>
           </div>
           <div className="guest-banner-actions">
-            <Link to="/login" className="banner-btn banner-btn-solid">Sign in</Link>
-            <Link to="/register" className="banner-btn banner-c-outline">Register</Link>
+            <Link to="/login" className="banner-btn banner-btn-solid">
+              Sign in
+            </Link>
+            <Link to="/register" className="banner-btn banner-c-outline">
+              Register
+            </Link>
           </div>
         </div>
       )}
@@ -268,8 +264,8 @@ function Home({ user, isLoggedIn, onLogout }) {
       <div ref={formRef}>
         <CreateArea
           onAdd={addNote}
-          onUpdate={updateNoteHandler}
-          isEditing={isEditing}
+          onUpdate={() => {}}
+          isEditing={false}
           editNote={{ title: "", content: "" }}
         />
       </div>
@@ -304,7 +300,9 @@ function Home({ user, isLoggedIn, onLogout }) {
 
       {loading ? (
         <div className="loading">
-          <span className="material-icons loading-icon">hourglass_empty</span>
+          <span className="material-icons loading-icon">
+            hourglass_empty
+          </span>
           <p>Loading notes...</p>
         </div>
       ) : (
@@ -365,10 +363,16 @@ function Home({ user, isLoggedIn, onLogout }) {
                 value={modalNote.title}
                 onChange={(e) => {
                   const value = e.target.value;
-                  setModalNote((prev) => ({ ...prev, title: value }));
+                  setModalNote((prev) => ({
+                    ...prev,
+                    title: value,
+                  }));
                 }}
               />
-              <button className="modal-close-btn" onClick={closeModal}>
+              <button
+                className="modal-close-btn"
+                onClick={closeModal}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -380,15 +384,24 @@ function Home({ user, isLoggedIn, onLogout }) {
               autoFocus
               onChange={(e) => {
                 const value = e.target.value;
-                setModalNote((prev) => ({ ...prev, content: value }));
+                setModalNote((prev) => ({
+                  ...prev,
+                  content: value,
+                }));
               }}
             />
 
             <div className="modal-footer">
-              <button className="modal-cancel-btn" onClick={closeModal}>
+              <button
+                className="modal-cancel-btn"
+                onClick={closeModal}
+              >
                 Cancel
               </button>
-              <button className="modal-save-btn" onClick={saveModalNote}>
+              <button
+                className="modal-save-btn"
+                onClick={saveModalNote}
+              >
                 Save
               </button>
             </div>

@@ -11,7 +11,7 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ✅ Check token on app load
+    // ✅ Only token + user info needed — no notes in localStorage
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("loggedInUser");
 
@@ -28,14 +28,13 @@ function App() {
   }
 
   function handleLogout() {
-    // ✅ Clear everything
+    // ✅ Only clear auth — guest notes in localStorage stay untouched
     localStorage.removeItem("token");
     localStorage.removeItem("loggedInUser");
     setIsLoggedIn(false);
     setUser(null);
   }
 
-  // ✅ Don't render until we've checked auth
   if (loading) return null;
 
   return (
@@ -43,13 +42,13 @@ function App() {
       <Route
         exact
         path="/"
-        render={() =>
-          isLoggedIn ? (
-            <Home user={user} isLoggedIn={isLoggedIn} onLogout={handleLogout} />
-          ) : (
-            <Home user={null} isLoggedIn={false} onLogout={handleLogout} />
-          )
-        }
+        render={() => (
+          <Home
+            user={user}
+            isLoggedIn={isLoggedIn}
+            onLogout={handleLogout}
+          />
+        )}
       />
       <Route
         path="/login"
