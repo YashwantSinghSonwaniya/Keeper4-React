@@ -6,6 +6,8 @@ import Footer from "../components/Footer";
 import Note from "../components/Note";
 import CreateArea from "../components/CreateArea";
 
+import toast from "react-hot-toast";
+
 import {
   getNotes,
   createNote,
@@ -88,37 +90,38 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Add note
   async function addNote(newNote) {
-    if (isLoggedIn) {
-      try {
-        const res = await createNote(newNote);
-        setNotes((prev) => [res.data, ...prev]);
-      } catch (err) {
-        console.error("Failed to create note:", err.message);
-      }
-    } else {
-      // Guest mode
-      setNotes((prev) => [
-        { ...newNote, color: "#ffffff", isPinned: false },
-        ...prev,
-      ]);
+  if (isLoggedIn) {
+    try {
+      const res = await createNote(newNote);
+      setNotes((prev) => [res.data, ...prev]);
+      toast.success("Note added!");
+    } catch (err) {
+      toast.error("Failed to add note.");
     }
+  } else {
+    setNotes((prev) => [
+      { ...newNote, color: "#ffffff", isPinned: false },
+      ...prev,
+    ]);
+    toast.success("Note added!");
   }
+}
 
   // ✅ Delete note
   async function deleteNoteHandler(id) {
-    if (isLoggedIn) {
-      try {
-        await deleteNote(id);
-        setNotes((prev) => prev.filter((n) => n.id !== id));
-      } catch (err) {
-        console.error("Failed to delete note:", err.message);
-      }
-    } else {
-      setNotes((prev) =>
-        prev.filter((_, index) => index !== id)
-      );
+  if (isLoggedIn) {
+    try {
+      await deleteNote(id);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      toast.success("Note deleted!");
+    } catch (err) {
+      toast.error("Failed to delete note.");
     }
+  } else {
+    setNotes((prev) => prev.filter((_, index) => index !== id));
+    toast.success("Note deleted!");
   }
+}
 
   // ✅ Open edit modal
   function editNoteHandler(id) {
@@ -139,29 +142,31 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Save modal
   async function saveModalNote() {
-    if (
-      modalNote.title.trim() === "" &&
-      modalNote.content.trim() === ""
-    ) return;
+  if (
+    modalNote.title.trim() === "" &&
+    modalNote.content.trim() === ""
+  ) return;
 
-    if (isLoggedIn) {
-      try {
-        const res = await updateNote(modalNoteId, modalNote);
-        setNotes((prev) =>
-          prev.map((n) => (n.id === modalNoteId ? res.data : n))
-        );
-      } catch (err) {
-        console.error("Failed to update note:", err.message);
-      }
-    } else {
+  if (isLoggedIn) {
+    try {
+      const res = await updateNote(modalNoteId, modalNote);
       setNotes((prev) =>
-        prev.map((note, index) =>
-          index === modalNoteId ? { ...note, ...modalNote } : note
-        )
+        prev.map((n) => (n.id === modalNoteId ? res.data : n))
       );
+      toast.success("Note updated!");
+    } catch (err) {
+      toast.error("Failed to update note.");
     }
-    closeModal();
+  } else {
+    setNotes((prev) =>
+      prev.map((note, index) =>
+        index === modalNoteId ? { ...note, ...modalNote } : note
+      )
+    );
+    toast.success("Note updated!");
   }
+  closeModal();
+}
 
   function closeModal() {
     setModalOpen(false);
@@ -171,45 +176,51 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Change color
   async function changeNoteColor(id, color) {
-    if (isLoggedIn) {
-      try {
-        await updateNoteColor(id, color);
-        setNotes((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, color } : n))
-        );
-      } catch (err) {
-        console.error("Failed to update color:", err.message);
-      }
-    } else {
+  if (isLoggedIn) {
+    try {
+      await updateNoteColor(id, color);
       setNotes((prev) =>
-        prev.map((note, index) =>
-          index === id ? { ...note, color } : note
-        )
+        prev.map((n) => (n.id === id ? { ...n, color } : n))
       );
+      toast.success("Color updated!");
+    } catch (err) {
+      toast.error("Failed to update color.");
     }
+  } else {
+    setNotes((prev) =>
+      prev.map((note, index) =>
+        index === id ? { ...note, color } : note
+      )
+    );
+    toast.success("Color updated!");
   }
+}
 
   // ✅ Toggle pin
   async function togglePin(id) {
-    if (isLoggedIn) {
-      try {
-        const res = await togglePinNote(id);
-        setNotes((prev) =>
-          prev.map((n) => (n.id === id ? res.data : n))
-        );
-      } catch (err) {
-        console.error("Failed to toggle pin:", err.message);
-      }
-    } else {
+  if (isLoggedIn) {
+    try {
+      const res = await togglePinNote(id);
+      const isPinned = res.data.is_pinned;
       setNotes((prev) =>
-        prev.map((note, index) =>
-          index === id
-            ? { ...note, isPinned: !note.isPinned }
-            : note
-        )
+        prev.map((n) => (n.id === id ? res.data : n))
       );
+      toast.success(isPinned ? "Note pinned! 📌" : "Note unpinned!");
+    } catch (err) {
+      toast.error("Failed to update pin.");
     }
+  } else {
+    const note = notes[id];
+    setNotes((prev) =>
+      prev.map((n, index) =>
+        index === id ? { ...n, isPinned: !n.isPinned } : n
+      )
+    );
+    toast.success(
+      !note.isPinned ? "Note pinned! 📌" : "Note unpinned!"
+    );
   }
+}
 
   function renderNote(noteItem, index) {
     const id = isLoggedIn ? noteItem.id : index;

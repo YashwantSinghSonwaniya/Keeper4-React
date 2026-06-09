@@ -5,6 +5,8 @@ import Home from "../pages/Home";
 import Login from "../pages/Login";
 import Register from "../pages/Register";
 
+import toast from "react-hot-toast";
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState(null);
@@ -28,12 +30,12 @@ function App() {
   }
 
   function handleLogout() {
-    // ✅ Only clear auth — guest notes in localStorage stay untouched
-    localStorage.removeItem("token");
-    localStorage.removeItem("loggedInUser");
-    setIsLoggedIn(false);
-    setUser(null);
-  }
+  localStorage.removeItem("token");
+  localStorage.removeItem("loggedInUser");
+  setIsLoggedIn(false);
+  setUser(null);
+  toast.success("Logged out successfully!");
+}
 
   if (loading) return null;
 
