@@ -12,23 +12,26 @@ function Header({ isLoggedIn, user, onLogout }) {
       </h1>
 
       <div className="header-right">
-        {/* ✅ Settings icon — always visible */}
-        <Link to="/settings" className="settings-icon-btn" title="Settings">
+        {/* Settings icon — always visible */}
+        <Link
+          to="/settings"
+          className="settings-icon-btn"
+          title="Settings"
+        >
           <span className="material-icons">settings</span>
         </Link>
 
-        {isLoggedIn ? (
+        {/* ✅ Only show when logged in */}
+        {isLoggedIn && (
           <div className="auth-buttons">
             <span className="welcome-text">Hi, {firstName} 👋</span>
             <button className="logout-btn" onClick={onLogout}>
               Logout
             </button>
           </div>
-        ) : (
-          <div className="auth-buttons">
-            <Link to="/login" className="signin-btn">Sign In</Link>
-          </div>
         )}
+
+        {/* ✅ NOT logged in — nothing here, banner handles Sign In */}
       </div>
     </header>
   );

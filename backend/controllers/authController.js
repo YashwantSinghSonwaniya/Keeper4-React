@@ -131,4 +131,121 @@ async function forgotPassword(req, res) {
   }
 }
 
-module.exports = { register, login, forgotPassword };
+// ✅ CHANGE PASSWORD
+async function changePassword(req, res) {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      error: "New password must be at least 6 characters.",
+    });
+  }
+
+  try {
+    // Get user from database
+    const result = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    const user = result.rows[0];
+
+    // Verify current password
+    const validPassword = await bcrypt.compare(
+      currentPassword,
+      user.password
+    );
+
+    if (!validPassword) {
+      return res.status(400).json({
+        error: "Current password is incorrect.",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update in database
+    await pool.query(
+      "UPDATE users SET password = $1 WHERE id = $2",
+      [hashedPassword, req.user.id]
+    );
+
+    res.json({ message: "Password changed successfully!" });
+  } catch (err) {
+    console.error("Change password error:", err.message);
+    res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+// ✅ DELETE ACCOUNT
+async function deleteAccount(req, res) {
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ error: "Password is required." });
+  }
+
+  try {
+    // Get user
+    const result = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    const user = result.rows[0];
+
+    // Verify password before deleting
+    const validPassword = await bcrypt.compare(password, user.password);
+
+    if (!validPassword) {
+      return res.status(400).json({ error: "Incorrect password." });
+    }
+
+    // Delete user — notes auto deleted via CASCADE
+    await pool.query("DELETE FROM users WHERE id = $1", [req.user.id]);
+
+    res.json({ message: "Account deleted successfully." });
+  } catch (err) {
+    console.error("Delete account error:", err.message);
+    res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+// ✅ UPDATE PROFILE (name)
+async function updateProfile(req, res) {
+  const { name } = req.body;
+
+  if (!name || name.trim() === "") {
+    return res.status(400).json({ error: "Name is required." });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, email",
+      [name.trim(), req.user.id]
+    );
+
+    res.json({
+      message: "Profile updated successfully!",
+      user: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Update profile error:", err.message);
+    res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+// ✅ Add to exports
+module.exports = {
+  register,
+  login,
+  forgotPassword,
+  changePassword,
+  deleteAccount,
+  updateProfile,
+};

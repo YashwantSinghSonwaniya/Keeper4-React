@@ -17,6 +17,14 @@ API.interceptors.request.use((req) => {
 export const registerUser = (data) => API.post("/auth/register", data);
 export const loginUser = (data) => API.post("/auth/login", data);
 export const forgotPassword = (data) => API.post("/auth/forgot-password", data);
+export const changePassword = (data) =>
+  API.put("/auth/change-password", data);
+
+export const deleteAccount = (data) =>
+  API.delete("/auth/delete-account", { data });
+
+export const updateProfile = (data) =>
+  API.put("/auth/update-profile", data);
 
 // ✅ Notes
 export const getNotes = () => API.get("/notes");
