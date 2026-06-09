@@ -1,3 +1,5 @@
+import toast from "react-hot-toast";
+
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
@@ -5,8 +7,6 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Note from "../components/Note";
 import CreateArea from "../components/CreateArea";
-
-import toast from "react-hot-toast";
 
 import {
   getNotes,
@@ -29,6 +29,17 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [modalColor, setModalColor] = useState("#ffffff");
 
   const formRef = useRef(null);
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState({
+    open: false,
+    noteId: null,
+  });
+
+  const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(
+    localStorage.getItem("skipDeleteConfirm") === "true",
+  );
+  const deleteSound = new Audio("/sounds/deleteButton.wav");
 
   // ✅ Load notes on mount
   useEffect(() => {
@@ -81,53 +92,67 @@ function Home({ user, isLoggedIn, onLogout }) {
     return title.includes(q) || content.includes(q);
   });
 
-  const pinnedNotes = filteredNotes.filter(
-    (n) => n.isPinned || n.is_pinned
-  );
+  const pinnedNotes = filteredNotes.filter((n) => n.isPinned || n.is_pinned);
   const unpinnedNotes = filteredNotes.filter(
-    (n) => !n.isPinned && !n.is_pinned
+    (n) => !n.isPinned && !n.is_pinned,
   );
 
   // ✅ Add note
   async function addNote(newNote) {
-  if (isLoggedIn) {
-    try {
-      const res = await createNote(newNote);
-      setNotes((prev) => [res.data, ...prev]);
+    if (isLoggedIn) {
+      try {
+        const res = await createNote(newNote);
+        setNotes((prev) => [res.data, ...prev]);
+        toast.success("Note added!");
+      } catch (err) {
+        toast.error("Failed to add note.");
+      }
+    } else {
+      setNotes((prev) => [
+        { ...newNote, color: "#ffffff", isPinned: false },
+        ...prev,
+      ]);
       toast.success("Note added!");
-    } catch (err) {
-      toast.error("Failed to add note.");
     }
-  } else {
-    setNotes((prev) => [
-      { ...newNote, color: "#ffffff", isPinned: false },
-      ...prev,
-    ]);
-    toast.success("Note added!");
   }
-}
 
   // ✅ Delete note
-  async function deleteNoteHandler(id) {
-  if (isLoggedIn) {
-    try {
-      await deleteNote(id);
-      setNotes((prev) => prev.filter((n) => n.id !== id));
-      toast.success("Note deleted!");
-    } catch (err) {
-      toast.error("Failed to delete note.");
+  // ✅ Show confirmation instead of deleting immediately
+  function confirmDelete(id) {
+    if (skipDeleteConfirm) {
+      // ✅ Skip confirmation — delete directly with sound
+      actuallyDelete(id);
+    } else {
+      setDeleteConfirm({ open: true, noteId: id });
     }
-  } else {
-    setNotes((prev) => prev.filter((_, index) => index !== id));
-    toast.success("Note deleted!");
   }
-}
+
+  // ✅ Actually delete after confirmation
+  async function actuallyDelete(id) {
+    // ✅ Play sound only when actually deleting
+    const deleteSound = new Audio("/sounds/deleteButton.wav");
+    deleteSound.currentTime = 0;
+    deleteSound.play();
+
+    setDeleteConfirm({ open: false, noteId: null });
+
+    if (isLoggedIn) {
+      try {
+        await deleteNote(id);
+        setNotes((prev) => prev.filter((n) => n.id !== id));
+        toast.success("Note deleted!");
+      } catch (err) {
+        toast.error("Failed to delete note.");
+      }
+    } else {
+      setNotes((prev) => prev.filter((_, index) => index !== id));
+      toast.success("Note deleted!");
+    }
+  }
 
   // ✅ Open edit modal
   function editNoteHandler(id) {
-    const note = isLoggedIn
-      ? notes.find((n) => n.id === id)
-      : notes[id];
+    const note = isLoggedIn ? notes.find((n) => n.id === id) : notes[id];
 
     if (!note) return;
 
@@ -142,31 +167,29 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Save modal
   async function saveModalNote() {
-  if (
-    modalNote.title.trim() === "" &&
-    modalNote.content.trim() === ""
-  ) return;
+    if (modalNote.title.trim() === "" && modalNote.content.trim() === "")
+      return;
 
-  if (isLoggedIn) {
-    try {
-      const res = await updateNote(modalNoteId, modalNote);
+    if (isLoggedIn) {
+      try {
+        const res = await updateNote(modalNoteId, modalNote);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === modalNoteId ? res.data : n)),
+        );
+        toast.success("Note updated!");
+      } catch (err) {
+        toast.error("Failed to update note.");
+      }
+    } else {
       setNotes((prev) =>
-        prev.map((n) => (n.id === modalNoteId ? res.data : n))
+        prev.map((note, index) =>
+          index === modalNoteId ? { ...note, ...modalNote } : note,
+        ),
       );
       toast.success("Note updated!");
-    } catch (err) {
-      toast.error("Failed to update note.");
     }
-  } else {
-    setNotes((prev) =>
-      prev.map((note, index) =>
-        index === modalNoteId ? { ...note, ...modalNote } : note
-      )
-    );
-    toast.success("Note updated!");
+    closeModal();
   }
-  closeModal();
-}
 
   function closeModal() {
     setModalOpen(false);
@@ -176,51 +199,45 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   // ✅ Change color
   async function changeNoteColor(id, color) {
-  if (isLoggedIn) {
-    try {
-      await updateNoteColor(id, color);
+    if (isLoggedIn) {
+      try {
+        await updateNoteColor(id, color);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, color } : n)),
+        );
+        toast.success("Color updated!");
+      } catch (err) {
+        toast.error("Failed to update color.");
+      }
+    } else {
       setNotes((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, color } : n))
+        prev.map((note, index) => (index === id ? { ...note, color } : note)),
       );
       toast.success("Color updated!");
-    } catch (err) {
-      toast.error("Failed to update color.");
     }
-  } else {
-    setNotes((prev) =>
-      prev.map((note, index) =>
-        index === id ? { ...note, color } : note
-      )
-    );
-    toast.success("Color updated!");
   }
-}
 
   // ✅ Toggle pin
   async function togglePin(id) {
-  if (isLoggedIn) {
-    try {
-      const res = await togglePinNote(id);
-      const isPinned = res.data.is_pinned;
+    if (isLoggedIn) {
+      try {
+        const res = await togglePinNote(id);
+        const isPinned = res.data.is_pinned;
+        setNotes((prev) => prev.map((n) => (n.id === id ? res.data : n)));
+        toast.success(isPinned ? "Note pinned! 📌" : "Note unpinned!");
+      } catch (err) {
+        toast.error("Failed to update pin.");
+      }
+    } else {
+      const note = notes[id];
       setNotes((prev) =>
-        prev.map((n) => (n.id === id ? res.data : n))
+        prev.map((n, index) =>
+          index === id ? { ...n, isPinned: !n.isPinned } : n,
+        ),
       );
-      toast.success(isPinned ? "Note pinned! 📌" : "Note unpinned!");
-    } catch (err) {
-      toast.error("Failed to update pin.");
+      toast.success(!note.isPinned ? "Note pinned! 📌" : "Note unpinned!");
     }
-  } else {
-    const note = notes[id];
-    setNotes((prev) =>
-      prev.map((n, index) =>
-        index === id ? { ...n, isPinned: !n.isPinned } : n
-      )
-    );
-    toast.success(
-      !note.isPinned ? "Note pinned! 📌" : "Note unpinned!"
-    );
   }
-}
 
   function renderNote(noteItem, index) {
     const id = isLoggedIn ? noteItem.id : index;
@@ -234,7 +251,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         content={noteItem.content}
         color={noteItem.color || "#ffffff"}
         isPinned={isPinned}
-        onDelete={deleteNoteHandler}
+        onDelete={confirmDelete} // ✅ changed
         onEdit={editNoteHandler}
         onColorChange={changeNoteColor}
         onPin={togglePin}
@@ -247,37 +264,44 @@ function Home({ user, isLoggedIn, onLogout }) {
       <Header isLoggedIn={isLoggedIn} user={user} onLogout={onLogout} />
 
       {!isLoggedIn && (
-  <div className="guest-banner banner-c">
-    <div className="guest-banner-left">
-      <span className="banner-c-icon">🔒</span>
-      <div className="guest-banner-text-group">
-        <span className="banner-c-text">
-          <strong className="banner-c-highlight">Guest mode</strong>
-          {" "}— Your notes are saved in this browser only.
-        </span>
-        <span className="banner-c-subtext">
-          ⚠️ Clearing browser data will permanently delete your notes.{" "}
-          <Link to="/register" className="banner-c-link">
-            Create a free account
-          </Link>{" "}
-          or{" "}
-          <Link to="/login" className="banner-c-link">
-            sign in
-          </Link>{" "}
-          to keep them safe across all devices.
-        </span>
-      </div>
-    </div>
-    <div className="guest-banner-actions">
-      <Link to="/login" className="banner-btn banner-btn-solid">
-        Sign in
-      </Link>
-      <Link to="/register" className="banner-btn banner-c-outline">
-        Register
-      </Link>
-    </div>
-  </div>
-)}
+        <div className="guest-banner banner-c">
+          <div className="guest-banner-left">
+            <span className="banner-c-icon">
+              <span role="img" aria-label="lock">
+                🔒
+              </span>
+            </span>
+            <div className="guest-banner-text-group">
+              <span className="banner-c-text">
+                <strong className="banner-c-highlight">Guest mode</strong> —
+                Your notes are saved in this browser only.
+              </span>
+              <span className="banner-c-subtext">
+                <span role="img" aria-label="warning">
+                  ⚠️
+                </span>{" "}
+                Clearing browser data will permanently delete your notes.{" "}
+                <Link to="/register" className="banner-c-link">
+                  Create a free account
+                </Link>{" "}
+                or{" "}
+                <Link to="/login" className="banner-c-link">
+                  sign in
+                </Link>{" "}
+                to keep them safe across all devices.
+              </span>
+            </div>
+          </div>
+          <div className="guest-banner-actions">
+            <Link to="/login" className="banner-btn banner-btn-solid">
+              Sign in
+            </Link>
+            <Link to="/register" className="banner-btn banner-c-outline">
+              Register
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div ref={formRef}>
         <CreateArea
@@ -299,10 +323,7 @@ function Home({ user, isLoggedIn, onLogout }) {
             className="search-input"
           />
           {searchQuery && (
-            <button
-              className="search-clear"
-              onClick={() => setSearchQuery("")}
-            >
+            <button className="search-clear" onClick={() => setSearchQuery("")}>
               <span className="material-icons">close</span>
             </button>
           )}
@@ -312,15 +333,15 @@ function Home({ user, isLoggedIn, onLogout }) {
       {searchQuery && filteredNotes.length === 0 && (
         <div className="no-results">
           <span className="material-icons">search_off</span>
-          <p>No notes match "<strong>{searchQuery}</strong>"</p>
+          <p>
+            No notes match "<strong>{searchQuery}</strong>"
+          </p>
         </div>
       )}
 
       {loading ? (
         <div className="loading">
-          <span className="material-icons loading-icon">
-            hourglass_empty
-          </span>
+          <span className="material-icons loading-icon">hourglass_empty</span>
           <p>Loading notes...</p>
         </div>
       ) : (
@@ -366,14 +387,10 @@ function Home({ user, isLoggedIn, onLogout }) {
         <div
           className="modal-overlay"
           onClick={(e) => {
-            if (e.target.classList.contains("modal-overlay"))
-              closeModal();
+            if (e.target.classList.contains("modal-overlay")) closeModal();
           }}
         >
-          <div
-            className="modal-card"
-            style={{ background: modalColor }}
-          >
+          <div className="modal-card" style={{ background: modalColor }}>
             <div className="modal-header">
               <input
                 className="modal-title-input"
@@ -387,10 +404,7 @@ function Home({ user, isLoggedIn, onLogout }) {
                   }));
                 }}
               />
-              <button
-                className="modal-close-btn"
-                onClick={closeModal}
-              >
+              <button className="modal-close-btn" onClick={closeModal}>
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -410,17 +424,60 @@ function Home({ user, isLoggedIn, onLogout }) {
             />
 
             <div className="modal-footer">
+              <button className="modal-cancel-btn" onClick={closeModal}>
+                Cancel
+              </button>
+              <button className="modal-save-btn" onClick={saveModalNote}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ DELETE CONFIRMATION MODAL */}
+      {deleteConfirm.open && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target.classList.contains("modal-overlay"))
+              setDeleteConfirm({ open: false, noteId: null });
+          }}
+        >
+          <div className="confirm-modal">
+            <div className="confirm-icon">
+              <span role="img" aria-label="trash">
+                🗑️
+              </span>
+            </div>
+            <h3 className="confirm-title">Delete this note?</h3>
+            <p className="confirm-text">This action cannot be undone.</p>
+
+            {/* ✅ Don't ask again checkbox */}
+            <label className="confirm-skip-label">
+              <input
+                type="checkbox"
+                checked={skipDeleteConfirm}
+                onChange={(e) => {
+                  setSkipDeleteConfirm(e.target.checked);
+                  localStorage.setItem("skipDeleteConfirm", e.target.checked);
+                }}
+              />
+              <span>Don't ask me again</span>
+            </label>
+
+            <div className="confirm-actions">
               <button
-                className="modal-cancel-btn"
-                onClick={closeModal}
+                className="confirm-cancel-btn"
+                onClick={() => setDeleteConfirm({ open: false, noteId: null })}
               >
                 Cancel
               </button>
               <button
-                className="modal-save-btn"
-                onClick={saveModalNote}
+                className="confirm-delete-btn"
+                onClick={() => actuallyDelete(deleteConfirm.noteId)}
               >
-                Save
+                Delete
               </button>
             </div>
           </div>

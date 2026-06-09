@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 
-const deleteSound = new Audio("/sounds/deleteButton.wav");
-
 const NOTE_COLORS = [
   { name: "Default", hex: "#ffffff" },
   { name: "Red", hex: "#f28b82" },
@@ -149,8 +147,6 @@ function Note(props) {
         {/* Delete button */}
         <button
           onClick={() => {
-            deleteSound.currentTime = 0;
-            deleteSound.play();
             props.onDelete(props.id);
           }}
           title="Delete note"

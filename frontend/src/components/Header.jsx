@@ -1,5 +1,4 @@
 import React from "react";
-import { Link } from "react-router-dom";
 
 function Header({ isLoggedIn, user, onLogout }) {
   // ✅ Extract first name only
