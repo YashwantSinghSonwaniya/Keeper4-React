@@ -1,5 +1,5 @@
-// 1st
 import React, { useState, useEffect } from "react";
+
 const addSound = new Audio("/sounds/addNote.wav");
 const warningSound = new Audio("/sounds/warningSound.mp3");
 
@@ -13,6 +13,7 @@ function CreateArea(props) {
 
   function handleChange(event) {
     const { name, value } = event.target;
+    // ✅ No limit — just update freely
     setTitleName((prevValue) => ({
       ...prevValue,
       [name]: value,
@@ -33,7 +34,10 @@ function CreateArea(props) {
   function submitNote(event) {
     event.preventDefault();
 
-    if (titleName.title.trim() === "" && titleName.content.trim() === "") {
+    if (
+      titleName.title.trim() === "" &&
+      titleName.content.trim() === ""
+    ) {
       warningSound.currentTime = 0;
       warningSound.play();
       setError("⚠️ Title or content is required.");
@@ -54,15 +58,24 @@ function CreateArea(props) {
     setExpanded(false);
   }
 
+  const charCount = titleName.content.length;
+  const titleCount = titleName.title.length;
+
   return (
     <form onSubmit={submitNote} className="create-note-form">
       {isExpanded && (
-        <input
-          onChange={handleChange}
-          name="title"
-          value={titleName?.title || ""}
-          placeholder="Title"
-        />
+        <>
+          <input
+            onChange={handleChange}
+            name="title"
+            value={titleName?.title || ""}
+            placeholder="Title"
+          />
+          {/* ✅ Title counter */}
+          <p className="char-counter">
+            {titleCount} chars
+          </p>
+        </>
       )}
 
       <textarea
@@ -73,6 +86,13 @@ function CreateArea(props) {
         placeholder="Take a note..."
         rows={isExpanded ? 3 : 1}
       />
+
+      {/* ✅ Content counter — no limit, just informational */}
+      {isExpanded && (
+        <p className="char-counter">
+          {charCount} {charCount === 1 ? "character" : "characters"}
+        </p>
+      )}
 
       {isExpanded && (
         <button type="submit">
