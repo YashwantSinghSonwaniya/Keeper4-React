@@ -9,6 +9,7 @@ import CreateArea from "../components/CreateArea";
 import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
 import VoiceRecorder from "../components/VoiceRecorder";
 import VoiceNotePlayer from "../components/VoiceNotePlayer";
+import useSpeechReader from "../hooks/useSpeechReader";
 
 import {
   getNotes,
@@ -95,6 +96,7 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
+  const speechReader = useSpeechReader();
 
   function getGuestPromptUserKey() {
     if (!user) return null;
@@ -338,6 +340,10 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   async function actuallyDelete(id) {
+    if (speechReader.activeId === id || speechReader.activeId === `modal-${id}`) {
+      speechReader.stop();
+    }
+
     const sound = new Audio("/sounds/deleteButton.wav");
     sound.currentTime = 0;
     sound.play();
@@ -500,6 +506,10 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function closeModal() {
+    if (modalNoteId && speechReader.activeId === `modal-${modalNoteId}`) {
+      speechReader.stop();
+    }
+
     setModalOpen(false);
     setModalNote({ title: "", content: "", category: "none" });
     setModalNoteId(null);
@@ -646,6 +656,15 @@ function Home({ user, isLoggedIn, onLogout }) {
     );
   }
 
+  function handleReadAloud(id, note) {
+    speechReader.toggleNote(id, note);
+  }
+
+  function handleModalReadAloud() {
+    if (!modalNoteId) return;
+    speechReader.toggleNote(`modal-${modalNoteId}`, modalNote);
+  }
+
   // ✅ renderNote: use SortableNote when logged in, plain Note for guests
   function renderNote(noteItem, sectionIndex, section) {
     let id;
@@ -673,6 +692,8 @@ function Home({ user, isLoggedIn, onLogout }) {
           onColorChange={changeNoteColor}
           onPin={togglePin}
           onCategoryChange={changeCategory}
+          onReadAloud={handleReadAloud}
+          speechState={speechReader.getNoteSpeechState(id)}
         />
       );
     }
@@ -693,6 +714,8 @@ function Home({ user, isLoggedIn, onLogout }) {
         onColorChange={changeNoteColor}
         onPin={togglePin}
         onCategoryChange={changeCategory}
+        onReadAloud={handleReadAloud}
+        speechState={speechReader.getNoteSpeechState(id)}
       />
     );
   }
@@ -969,6 +992,35 @@ function Home({ user, isLoggedIn, onLogout }) {
                 setModalNote((prev) => ({ ...prev, content: value }));
               }}
             />
+
+            {modalNoteId && (
+              <div className="modal-speech-section">
+                <button
+                  type="button"
+                  className={`modal-read-aloud-btn ${
+                    speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isActive
+                      ? "modal-read-aloud-active"
+                      : ""
+                  }`}
+                  onClick={handleModalReadAloud}
+                  disabled={modalSaving}
+                >
+                  <span aria-hidden="true">
+                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).icon}
+                  </span>
+                  <span>
+                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).label} aloud
+                  </span>
+                </button>
+                {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isActive && (
+                  <span className="modal-reading-status">
+                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isReading
+                      ? "Reading..."
+                      : "Paused"}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="modal-voice-section">
               <div className="modal-voice-heading">

@@ -36,6 +36,8 @@ function SortableNote(props) {
         onColorChange={props.onColorChange}
         onPin={props.onPin}
         onCategoryChange={props.onCategoryChange}
+        onReadAloud={props.onReadAloud}
+        speechState={props.speechState}
       />
     </div>
   );
