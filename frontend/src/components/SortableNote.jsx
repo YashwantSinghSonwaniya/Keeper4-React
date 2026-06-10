@@ -29,10 +29,12 @@ function SortableNote(props) {
         content={props.content}
         color={props.color}
         isPinned={props.isPinned}
+        category={props.category}
         onDelete={props.onDelete}
         onEdit={props.onEdit}
         onColorChange={props.onColorChange}
         onPin={props.onPin}
+        onCategoryChange={props.onCategoryChange}
       />
     </div>
   );

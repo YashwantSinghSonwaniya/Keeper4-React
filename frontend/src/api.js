@@ -29,6 +29,9 @@ export const updateProfile = (data) =>
 export const reorderNotes = (data) =>
   API.patch("/notes/reorder", data);
 
+export const updateCategory = (id, category) =>
+  API.patch(`/notes/${id}/category`, { category });
+
 // ✅ Notes
 export const getNotes = () => API.get("/notes");
 export const createNote = (data) => API.post("/notes", data);

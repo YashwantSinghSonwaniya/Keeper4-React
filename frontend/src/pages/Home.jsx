@@ -34,6 +34,9 @@ import {
 } from "@dnd-kit/sortable";
 import SortableNote from "../components/SortableNote";
 
+import { updateCategory } from "../api";
+import CATEGORIES from "../categories";
+
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -50,7 +53,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   });
 
   const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(
-    localStorage.getItem("skipDeleteConfirm") === "true"
+    localStorage.getItem("skipDeleteConfirm") === "true",
   );
 
   const formRef = useRef(null);
@@ -64,8 +67,10 @@ function Home({ user, isLoggedIn, onLogout }) {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
+
+  const [activeCategory, setActiveCategory] = useState("all");
 
   // ✅ KEY FIX — section-aware drag handler with unique prefixed IDs
   async function handleDragEnd(event, section) {
@@ -73,8 +78,7 @@ function Home({ user, isLoggedIn, onLogout }) {
     if (!over || active.id === over.id) return;
 
     // ✅ Only work on the dragged section's notes
-    const sectionNotes =
-      section === "pinned" ? pinnedNotes : unpinnedNotes;
+    const sectionNotes = section === "pinned" ? pinnedNotes : unpinnedNotes;
 
     let oldIndex, newIndex;
 
@@ -157,12 +161,15 @@ function Home({ user, isLoggedIn, onLogout }) {
     const q = searchQuery.toLowerCase();
     const title = (note.title || "").toLowerCase();
     const content = (note.content || "").toLowerCase();
-    return title.includes(q) || content.includes(q);
+    const matchesSearch = title.includes(q) || content.includes(q);
+    const matchesCategory =
+      activeCategory === "all" || (note.category || "none") === activeCategory;
+    return matchesSearch && matchesCategory;
   });
 
   const pinnedNotes = filteredNotes.filter((n) => n.isPinned || n.is_pinned);
   const unpinnedNotes = filteredNotes.filter(
-    (n) => !n.isPinned && !n.is_pinned
+    (n) => !n.isPinned && !n.is_pinned,
   );
 
   async function addNote(newNote) {
@@ -206,13 +213,22 @@ function Home({ user, isLoggedIn, onLogout }) {
         toast.error("Failed to delete note.");
       }
     } else {
-      setNotes((prev) => prev.filter((_, index) => index !== id));
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(id).split("-")[1], 10);
+      setNotes((prev) => prev.filter((_, index) => index !== globalIndex));
       toast.success("Note deleted!");
     }
   }
 
   function editNoteHandler(id) {
-    const note = isLoggedIn ? notes.find((n) => n.id === id) : notes[id];
+    let note;
+    if (isLoggedIn) {
+      note = notes.find((n) => n.id === id);
+    } else {
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(id).split("-")[1], 10);
+      note = notes[globalIndex];
+    }
     if (!note) return;
     setModalNoteId(id);
     setModalNote({ title: note.title || "", content: note.content || "" });
@@ -228,17 +244,19 @@ function Home({ user, isLoggedIn, onLogout }) {
       try {
         const res = await updateNote(modalNoteId, modalNote);
         setNotes((prev) =>
-          prev.map((n) => (n.id === modalNoteId ? res.data : n))
+          prev.map((n) => (n.id === modalNoteId ? res.data : n)),
         );
         toast.success("Note updated!");
       } catch (err) {
         toast.error("Failed to update note.");
       }
     } else {
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(modalNoteId).split("-")[1], 10);
       setNotes((prev) =>
         prev.map((note, index) =>
-          index === modalNoteId ? { ...note, ...modalNote } : note
-        )
+          index === globalIndex ? { ...note, ...modalNote } : note,
+        ),
       );
       toast.success("Note updated!");
     }
@@ -256,17 +274,17 @@ function Home({ user, isLoggedIn, onLogout }) {
       try {
         await updateNoteColor(id, color);
         setNotes((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, color } : n))
+          prev.map((n) => (n.id === id ? { ...n, color } : n)),
         );
         toast.success("Color updated!");
       } catch (err) {
         toast.error("Failed to update color.");
       }
     } else {
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(id).split("-")[1], 10);
       setNotes((prev) =>
-        prev.map((note, index) =>
-          index === id ? { ...note, color } : note
-        )
+        prev.map((note, index) => (index === globalIndex ? { ...note, color } : note)),
       );
       toast.success("Color updated!");
     }
@@ -278,41 +296,99 @@ function Home({ user, isLoggedIn, onLogout }) {
         const res = await togglePinNote(id);
         setNotes((prev) => prev.map((n) => (n.id === id ? res.data : n)));
         toast.success(
-          res.data.is_pinned ? "Note pinned! 📌" : "Note unpinned!"
+          res.data.is_pinned ? "Note pinned! 📌" : "Note unpinned!",
         );
       } catch (err) {
         toast.error("Failed to update pin.");
       }
     } else {
-      const note = notes[id];
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(id).split("-")[1], 10);
+      const note = notes[globalIndex];
       setNotes((prev) =>
         prev.map((n, index) =>
-          index === id ? { ...n, isPinned: !n.isPinned } : n
-        )
+          index === globalIndex ? { ...n, isPinned: !n.isPinned } : n,
+        ),
       );
       toast.success(!note.isPinned ? "Note pinned! 📌" : "Note unpinned!");
     }
   }
 
-  // ✅ renderNote uses prefixed IDs for guest to avoid duplicates
+  // ✅ Helper to find global index in full notes array (for guest mode)
+  function getGlobalNoteIndex(noteItem) {
+    return notes.findIndex(
+      (n) => n.title === noteItem.title && n.content === noteItem.content && n.color === noteItem.color
+    );
+  }
+
+  // ✅ renderNote: use SortableNote when logged in, plain Note for guests
   function renderNote(noteItem, sectionIndex, section) {
-    const id = isLoggedIn ? noteItem.id : `${section}-${sectionIndex}`;
+    let id;
+    if (isLoggedIn) {
+      id = noteItem.id;
+    } else {
+      const globalIndex = getGlobalNoteIndex(noteItem);
+      id = `${section}-${globalIndex}`;
+    }
     const isPinned = noteItem.is_pinned || noteItem.isPinned || false;
 
+    if (isLoggedIn) {
+      return (
+        <SortableNote
+          key={noteItem.id}
+          id={id}
+          title={noteItem.title}
+          content={noteItem.content}
+          color={noteItem.color || "#ffffff"}
+          isPinned={isPinned}
+          category={noteItem.category || "none"}
+          onDelete={confirmDelete}
+          onEdit={editNoteHandler}
+          onColorChange={changeNoteColor}
+          onPin={togglePin}
+          onCategoryChange={changeCategory}
+        />
+      );
+    }
+
+    // Guest mode: render plain Note (no drag/drop)
     return (
-      <SortableNote
-        key={isLoggedIn ? noteItem.id : `note-${sectionIndex}`}
+      <Note
+        key={`note-${section}-${sectionIndex}`}
         id={id}
         title={noteItem.title}
         content={noteItem.content}
         color={noteItem.color || "#ffffff"}
         isPinned={isPinned}
+        category={noteItem.category || "none"}
         onDelete={confirmDelete}
         onEdit={editNoteHandler}
         onColorChange={changeNoteColor}
         onPin={togglePin}
+        onCategoryChange={changeCategory}
       />
     );
+  }
+
+  async function changeCategory(id, category) {
+    if (isLoggedIn) {
+      try {
+        await updateCategory(id, category);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, category } : n)),
+        );
+      } catch (err) {
+        toast.error("Failed to update category.");
+      }
+    } else {
+      // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
+      const globalIndex = parseInt(String(id).split("-")[1], 10);
+      setNotes((prev) =>
+        prev.map((note, index) =>
+          index === globalIndex ? { ...note, category } : note,
+        ),
+      );
+    }
   }
 
   return (
@@ -323,7 +399,9 @@ function Home({ user, isLoggedIn, onLogout }) {
         <div className="guest-banner banner-c">
           <div className="guest-banner-left">
             <span className="banner-c-icon">
-              <span role="img" aria-label="lock">🔒</span>
+              <span role="img" aria-label="lock">
+                🔒
+              </span>
             </span>
             <div className="guest-banner-text-group">
               <span className="banner-c-text">
@@ -331,13 +409,17 @@ function Home({ user, isLoggedIn, onLogout }) {
                 Your notes are saved in this browser only.
               </span>
               <span className="banner-c-subtext">
-                <span role="img" aria-label="warning">⚠️</span>{" "}
+                <span role="img" aria-label="warning">
+                  ⚠️
+                </span>{" "}
                 Clearing browser data will permanently delete your notes.{" "}
                 <Link to="/register" className="banner-c-link">
                   Create a free account
                 </Link>{" "}
                 or{" "}
-                <Link to="/login" className="banner-c-link">sign in</Link>{" "}
+                <Link to="/login" className="banner-c-link">
+                  sign in
+                </Link>{" "}
                 to keep them safe across all devices.
               </span>
             </div>
@@ -373,10 +455,7 @@ function Home({ user, isLoggedIn, onLogout }) {
             className="search-input"
           />
           {searchQuery && (
-            <button
-              className="search-clear"
-              onClick={() => setSearchQuery("")}
-            >
+            <button className="search-clear" onClick={() => setSearchQuery("")}>
               <span className="material-icons">close</span>
             </button>
           )}
@@ -386,7 +465,34 @@ function Home({ user, isLoggedIn, onLogout }) {
       {searchQuery && filteredNotes.length === 0 && (
         <div className="no-results">
           <span className="material-icons">search_off</span>
-          <p>No notes match "<strong>{searchQuery}</strong>"</p>
+          <p>
+            No notes match "<strong>{searchQuery}</strong>"
+          </p>
+        </div>
+      )}
+
+      {/* ✅ Category filter bar */}
+      {notes.length > 0 && (
+        <div className="category-filter-bar">
+          <button
+            className={`category-filter-btn ${
+              activeCategory === "all" ? "category-filter-active" : ""
+            }`}
+            onClick={() => setActiveCategory("all")}
+          >
+            All
+          </button>
+          {CATEGORIES.filter((c) => c.id !== "none").map((cat) => (
+            <button
+              key={cat.id}
+              className={`category-filter-btn ${
+                activeCategory === cat.id ? "category-filter-active" : ""
+              }`}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              {cat.emoji} {cat.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -404,22 +510,26 @@ function Home({ user, isLoggedIn, onLogout }) {
                 <span className="material-icons">push_pin</span>
                 Pinned
               </p>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(e) => handleDragEnd(e, "pinned")}
-              >
-                <SortableContext
-                  items={pinnedNotes.map((n, i) =>
-                    isLoggedIn ? n.id : `pinned-${i}`
-                  )}
-                  strategy={rectSortingStrategy}
+              {isLoggedIn ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleDragEnd(e, "pinned")}
                 >
-                  <div className="notes-grid">
-                    {pinnedNotes.map((note, i) => renderNote(note, i, "pinned"))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+                  <SortableContext
+                    items={pinnedNotes.map((n, i) => (isLoggedIn ? n.id : `pinned-${i}`))}
+                    strategy={rectSortingStrategy}
+                  >
+                    <div className="notes-grid">
+                      {pinnedNotes.map((note, i) => renderNote(note, i, "pinned"))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                <div className="notes-grid">
+                  {pinnedNotes.map((note, i) => renderNote(note, i, "pinned"))}
+                </div>
+              )}
             </div>
           )}
 
@@ -438,22 +548,26 @@ function Home({ user, isLoggedIn, onLogout }) {
                   Notes
                 </p>
               )}
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(e) => handleDragEnd(e, "unpinned")}
-              >
-                <SortableContext
-                  items={unpinnedNotes.map((n, i) =>
-                    isLoggedIn ? n.id : `unpinned-${i}`
-                  )}
-                  strategy={rectSortingStrategy}
+              {isLoggedIn ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleDragEnd(e, "unpinned")}
                 >
-                  <div className="notes-grid">
-                    {unpinnedNotes.map((note, i) => renderNote(note, i, "unpinned"))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+                  <SortableContext
+                    items={unpinnedNotes.map((n, i) => (isLoggedIn ? n.id : `unpinned-${i}`))}
+                    strategy={rectSortingStrategy}
+                  >
+                    <div className="notes-grid">
+                      {unpinnedNotes.map((note, i) => renderNote(note, i, "unpinned"))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                <div className="notes-grid">
+                  {unpinnedNotes.map((note, i) => renderNote(note, i, "unpinned"))}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -517,7 +631,9 @@ function Home({ user, isLoggedIn, onLogout }) {
         >
           <div className="confirm-modal">
             <div className="confirm-icon">
-              <span role="img" aria-label="trash">🗑️</span>
+              <span role="img" aria-label="trash">
+                🗑️
+              </span>
             </div>
             <h3 className="confirm-title">Delete this note?</h3>
             <p className="confirm-text">This action cannot be undone.</p>
@@ -527,10 +643,7 @@ function Home({ user, isLoggedIn, onLogout }) {
                 checked={skipDeleteConfirm}
                 onChange={(e) => {
                   setSkipDeleteConfirm(e.target.checked);
-                  localStorage.setItem(
-                    "skipDeleteConfirm",
-                    e.target.checked
-                  );
+                  localStorage.setItem("skipDeleteConfirm", e.target.checked);
                 }}
               />
               <span>Don't ask me again</span>
@@ -538,9 +651,7 @@ function Home({ user, isLoggedIn, onLogout }) {
             <div className="confirm-actions">
               <button
                 className="confirm-cancel-btn"
-                onClick={() =>
-                  setDeleteConfirm({ open: false, noteId: null })
-                }
+                onClick={() => setDeleteConfirm({ open: false, noteId: null })}
               >
                 Cancel
               </button>

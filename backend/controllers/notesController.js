@@ -16,11 +16,11 @@ async function getNotes(req, res) {
 
 // ✅ CREATE note
 async function createNote(req, res) {
-  const { title, content, color, is_pinned, position } = req.body;
+  const { title, content, color, is_pinned, position, category } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO notes (user_id, title, content, color, is_pinned, position)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO notes (user_id, title, content, color, is_pinned, position, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
         req.user.id,
@@ -29,6 +29,7 @@ async function createNote(req, res) {
         color || "#ffffff",
         is_pinned || false,
         position || 0,
+        category || "none",
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -41,12 +42,14 @@ async function createNote(req, res) {
 // ✅ UPDATE note (title + content)
 async function updateNote(req, res) {
   const { id } = req.params;
-  const { title, content } = req.body;
+  const { title, content, category } = req.body;
   try {
     const result = await pool.query(
-      `UPDATE notes SET title=$1, content=$2, updated_at=NOW()
-       WHERE id=$3 AND user_id=$4 RETURNING *`,
-      [title, content, id, req.user.id]
+      `UPDATE notes 
+       SET title=$1, content=$2, category=$3, updated_at=NOW()
+       WHERE id=$4 AND user_id=$5 
+       RETURNING *`,
+      [title, content, category || "none", id, req.user.id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Note not found." });
@@ -133,6 +136,22 @@ async function togglePin(req, res) {
   }
 }
 
+async function updateNoteCategory(req, res) {
+  const { id } = req.params;
+  const { category } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE notes SET category=$1, updated_at=NOW()
+       WHERE id=$2 AND user_id=$3 RETURNING *`,
+      [category || "none", id, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Update category error:", err.message);
+    res.status(500).json({ error: "Server error." });
+  }
+}
+
 module.exports = {
   getNotes,
   createNote,
@@ -141,4 +160,5 @@ module.exports = {
   updateNoteColor,
   togglePin,
   updateNotePositions,
+  updateNoteCategory,
 };
