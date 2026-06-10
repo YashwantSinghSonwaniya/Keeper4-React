@@ -26,6 +26,9 @@ export const deleteAccount = (data) =>
 export const updateProfile = (data) =>
   API.put("/auth/update-profile", data);
 
+export const reorderNotes = (data) =>
+  API.patch("/notes/reorder", data);
+
 // ✅ Notes
 export const getNotes = () => API.get("/notes");
 export const createNote = (data) => API.post("/notes", data);

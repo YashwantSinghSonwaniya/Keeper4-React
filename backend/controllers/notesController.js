@@ -58,6 +58,31 @@ async function updateNote(req, res) {
   }
 }
 
+// ✅ UPDATE note positions after drag
+async function updateNotePositions(req, res) {
+  const { orderedIds } = req.body;
+
+  if (!orderedIds || !Array.isArray(orderedIds)) {
+    return res.status(400).json({ error: "orderedIds array required." });
+  }
+
+  try {
+    // Update each note's position
+    const updates = orderedIds.map((id, index) =>
+      pool.query(
+        "UPDATE notes SET position = $1 WHERE id = $2 AND user_id = $3",
+        [index, id, req.user.id]
+      )
+    );
+
+    await Promise.all(updates);
+    res.json({ message: "Positions updated." });
+  } catch (err) {
+    console.error("Update positions error:", err.message);
+    res.status(500).json({ error: "Server error." });
+  }
+}
+
 // ✅ DELETE note
 async function deleteNote(req, res) {
   const { id } = req.params;
@@ -115,4 +140,5 @@ module.exports = {
   deleteNote,
   updateNoteColor,
   togglePin,
+  updateNotePositions,
 };

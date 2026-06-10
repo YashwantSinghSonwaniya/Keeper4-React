@@ -8,6 +8,7 @@ const {
   deleteNote,
   updateNoteColor,
   togglePin,
+  updateNotePositions,
 } = require("../controllers/notesController");
 
 // All notes routes are protected
@@ -19,5 +20,6 @@ router.put("/:id", updateNote);
 router.delete("/:id", deleteNote);
 router.patch("/:id/color", updateNoteColor);
 router.patch("/:id/pin", togglePin);
+router.patch("/reorder", updateNotePositions);
 
 module.exports = router;

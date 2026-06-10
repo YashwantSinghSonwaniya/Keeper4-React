@@ -1467,3 +1467,19 @@ button:disabled {
   margin-top: 2px;
   padding-right: 4px;
 }
+
+/* ======= DRAG AND DROP ======= */
+.notes-grid > div {
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.notes-grid > div[style*="grab"] {
+  cursor: grab;
+}
+
+.notes-grid > div:active {
+  cursor: grabbing;
+}
