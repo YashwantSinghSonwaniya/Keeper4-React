@@ -10,6 +10,7 @@ const {
   togglePin,
   updateNotePositions,
   updateNoteCategory,
+  importNotes,
 } = require("../controllers/notesController");
 
 // All notes routes are protected
@@ -17,6 +18,7 @@ router.use(authenticateToken);
 
 router.get("/", getNotes);
 router.post("/", createNote);
+router.post("/import", importNotes);
 router.put("/:id", updateNote);
 router.delete("/:id", deleteNote);
 router.patch("/:id/color", updateNoteColor);

@@ -152,6 +152,49 @@ async function updateNoteCategory(req, res) {
   }
 }
 
+async function importNotes(req, res) {
+  const { notes } = req.body;
+
+  if (!Array.isArray(notes)) {
+    return res.status(400).json({ error: "Notes array is required." });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const insertedRows = [];
+
+    for (let i = 0; i < notes.length; i += 1) {
+      const note = notes[i];
+      const result = await client.query(
+        `INSERT INTO notes (user_id, title, content, color, is_pinned, position, category)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          req.user.id,
+          note.title || "",
+          note.content || "",
+          note.color || "#ffffff",
+          note.is_pinned || false,
+          typeof note.position === "number" ? note.position : i,
+          note.category || "none",
+        ]
+      );
+      insertedRows.push(result.rows[0]);
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json({ message: "Guest notes imported successfully.", notes: insertedRows });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Import notes error:", err.message);
+    res.status(500).json({ error: "Failed to import notes." });
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   getNotes,
   createNote,
@@ -161,4 +204,5 @@ module.exports = {
   togglePin,
   updateNotePositions,
   updateNoteCategory,
+  importNotes,
 };

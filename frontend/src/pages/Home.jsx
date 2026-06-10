@@ -15,6 +15,7 @@ import {
   updateNoteColor,
   togglePinNote,
   reorderNotes,
+  importNotes,
 } from "../api";
 
 import {
@@ -33,6 +34,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import SortableNote from "../components/SortableNote";
+import GuestImportModal from "../components/GuestImportModal";
 
 import { updateCategory } from "../api";
 import CATEGORIES from "../categories";
@@ -71,6 +73,47 @@ function Home({ user, isLoggedIn, onLogout }) {
   );
 
   const [activeCategory, setActiveCategory] = useState("all");
+  const [showGuestImportModal, setShowGuestImportModal] = useState(false);
+  const [guestNotesToImport, setGuestNotesToImport] = useState([]);
+  const [deleteGuestNotesAfterImport, setDeleteGuestNotesAfterImport] = useState(true);
+  const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
+  const [guestImportLoading, setGuestImportLoading] = useState(false);
+
+  function getGuestPromptUserKey() {
+    if (!user) return null;
+    if (user.id) return `user_${user.id}`;
+    return `user_${encodeURIComponent(user.email || "unknown")}`;
+  }
+
+  function getGuestPromptLastTimestampKey(userKey) {
+    return `lastGuestImportPrompt_${userKey}`;
+  }
+
+  function getGuestPromptDisabledKey(userKey) {
+    return `disableGuestImportPrompt_${userKey}`;
+  }
+
+  function getGuestImportPromptPendingKey(userKey) {
+    return `guestImportPromptPending_${userKey}`;
+  }
+
+  function getGuestImportPromptHandledKey(userKey) {
+    return `guestImportPromptHandled_${userKey}`;
+  }
+
+  function getGuestNotesFromStorage() {
+    const saved = localStorage.getItem("notes_guest");
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+    } catch (err) {
+      console.error("Could not parse guest notes:", err);
+      localStorage.removeItem("notes_guest");
+      return [];
+    }
+  }
 
   // ✅ KEY FIX — section-aware drag handler with unique prefixed IDs
   async function handleDragEnd(event, section) {
@@ -118,22 +161,23 @@ function Home({ user, isLoggedIn, onLogout }) {
     }
   }
 
-  useEffect(() => {
-    async function loadNotes() {
-      setLoading(true);
-      if (isLoggedIn) {
-        try {
-          const res = await getNotes();
-          setNotes(res.data);
-        } catch (err) {
-          console.error("Failed to load notes:", err.message);
-        }
-      } else {
-        const saved = localStorage.getItem("notes_guest");
-        setNotes(saved ? JSON.parse(saved) : []);
+  async function loadNotes() {
+    setLoading(true);
+    if (isLoggedIn) {
+      try {
+        const res = await getNotes();
+        setNotes(res.data);
+      } catch (err) {
+        console.error("Failed to load notes:", err.message);
       }
-      setLoading(false);
+    } else {
+      const saved = localStorage.getItem("notes_guest");
+      setNotes(saved ? JSON.parse(saved) : []);
     }
+    setLoading(false);
+  }
+
+  useEffect(() => {
     loadNotes();
   }, [isLoggedIn]);
 
@@ -142,6 +186,47 @@ function Home({ user, isLoggedIn, onLogout }) {
       localStorage.setItem("notes_guest", JSON.stringify(notes));
     }
   }, [notes, isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+
+    const userKey = getGuestPromptUserKey();
+    if (!userKey) return;
+
+    const pending =
+      sessionStorage.getItem(getGuestImportPromptPendingKey(userKey)) === "true";
+    const handled =
+      sessionStorage.getItem(getGuestImportPromptHandledKey(userKey)) === "true";
+    const disabledLocal =
+      localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true";
+    const imported =
+      localStorage.getItem(`guestNotesImported_${userKey}`) === "true";
+
+    if (!pending || handled || disabledLocal || imported) return;
+
+    const guestNotes = getGuestNotesFromStorage();
+    if (guestNotes.length === 0) return;
+
+    const lastPrompt = Number(
+      localStorage.getItem(getGuestPromptLastTimestampKey(userKey)) || "0",
+    );
+    const hasWaited24H = Date.now() - lastPrompt >= 24 * 60 * 60 * 1000;
+    const shouldPrompt = lastPrompt === 0 || hasWaited24H;
+    if (!shouldPrompt) return;
+
+    setGuestNotesToImport(guestNotes);
+    setShowGuestImportModal(true);
+    sessionStorage.setItem(getGuestImportPromptHandledKey(userKey), "true");
+  }, [isLoggedIn, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const userKey = getGuestPromptUserKey();
+    if (!userKey) return;
+    setDisableGuestImportPrompt(
+      localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true",
+    );
+  }, [user]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -267,6 +352,86 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalOpen(false);
     setModalNote({ title: "", content: "" });
     setModalNoteId(null);
+  }
+
+  async function handleImportGuestNotes() {
+    if (guestNotesToImport.length === 0) return;
+    setGuestImportLoading(true);
+
+    const userKey = getGuestPromptUserKey();
+
+    try {
+      const notesToImport = guestNotesToImport.map((note, index) => ({
+        title: note.title || "",
+        content: note.content || "",
+        color: note.color || "#ffffff",
+        is_pinned: note.isPinned || note.is_pinned || false,
+        category: note.category || "none",
+        position: index,
+      }));
+
+      await importNotes(notesToImport);
+      if (disableGuestImportPrompt && userKey) {
+        localStorage.setItem(getGuestPromptDisabledKey(userKey), "true");
+      }
+      if (deleteGuestNotesAfterImport) {
+        localStorage.removeItem("notes_guest");
+      }
+      if (userKey) {
+        localStorage.setItem(`guestNotesImported_${userKey}`, "true");
+        localStorage.setItem(
+          getGuestPromptLastTimestampKey(userKey),
+          Date.now().toString(),
+        );
+        sessionStorage.setItem(getGuestImportPromptPendingKey(userKey), "false");
+      }
+      toast.success(`Imported ${guestNotesToImport.length} notes successfully`);
+      await loadNotes();
+    } catch (err) {
+      console.error("Import guest notes failed:", err);
+      toast.error("Failed to import guest notes.");
+    } finally {
+      setGuestImportLoading(false);
+      setShowGuestImportModal(false);
+    }
+  }
+
+  function handleSkipGuestImport() {
+    const userKey = getGuestPromptUserKey();
+    if (disableGuestImportPrompt && userKey) {
+      localStorage.setItem(getGuestPromptDisabledKey(userKey), "true");
+    }
+    if (userKey) {
+      localStorage.setItem(
+        getGuestPromptLastTimestampKey(userKey),
+        Date.now().toString(),
+      );
+      sessionStorage.setItem(getGuestImportPromptPendingKey(userKey), "false");
+    }
+    setShowGuestImportModal(false);
+  }
+
+  function handleToggleDeleteAfterImport() {
+    setDeleteGuestNotesAfterImport((prev) => !prev);
+  }
+
+  function handleToggleDisablePrompt() {
+    const userKey = getGuestPromptUserKey();
+    if (!userKey) return;
+
+    setDisableGuestImportPrompt((prev) => {
+      const next = !prev;
+      localStorage.setItem(getGuestPromptDisabledKey(userKey), next ? "true" : "false");
+      return next;
+    });
+  }
+
+  function handleToggleDisablePrompt() {
+    setDisableGuestImportPrompt((prev) => {
+      const next = !prev;
+      localStorage.setItem("disableGuestImportPrompt", next ? "true" : "false");
+      return next;
+    });
   }
 
   async function changeNoteColor(id, color) {
@@ -572,6 +737,18 @@ function Home({ user, isLoggedIn, onLogout }) {
           )}
         </>
       )}
+
+      <GuestImportModal
+        open={showGuestImportModal}
+        count={guestNotesToImport.length}
+        deleteAfterImport={deleteGuestNotesAfterImport}
+        disablePrompt={disableGuestImportPrompt}
+        onToggleDeleteAfterImport={handleToggleDeleteAfterImport}
+        onToggleDisablePrompt={handleToggleDisablePrompt}
+        onImport={handleImportGuestNotes}
+        onLater={handleSkipGuestImport}
+        loading={guestImportLoading}
+      />
 
       <Footer />
 

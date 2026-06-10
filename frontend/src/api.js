@@ -35,6 +35,7 @@ export const updateCategory = (id, category) =>
 // ✅ Notes
 export const getNotes = () => API.get("/notes");
 export const createNote = (data) => API.post("/notes", data);
+export const importNotes = (notes) => API.post("/notes/import", { notes });
 export const updateNote = (id, data) => API.put(`/notes/${id}`, data);
 export const deleteNote = (id) => API.delete(`/notes/${id}`);
 export const updateNoteColor = (id, color) => API.patch(`/notes/${id}/color`, { color });

@@ -57,7 +57,13 @@ function App() {
       />
       <Route
         path="/register"
-        render={() => (isLoggedIn ? <Redirect to="/" /> : <Register />)}
+        render={() =>
+          isLoggedIn ? (
+            <Redirect to="/" />
+          ) : (
+            <Register onLogin={handleLogin} />
+          )
+        }
       />
       <Route
         path="/settings"

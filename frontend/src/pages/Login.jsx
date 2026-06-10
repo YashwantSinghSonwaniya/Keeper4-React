@@ -32,14 +32,20 @@ function Login({ onLogin }) {
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
 
+      const userKey = res.data.user.id
+        ? `user_${res.data.user.id}`
+        : `user_${encodeURIComponent(res.data.user.email || "unknown")}`;
+      sessionStorage.setItem(`guestImportPromptPending_${userKey}`, "true");
+      sessionStorage.setItem(`guestImportPromptHandled_${userKey}`, "false");
+
       onLogin(res.data.user);
       history.push("/");
     } catch (err) {
       setError(err.response?.data?.error || "Login failed.");
-    } finally {
       setLoading(false);
     }
   }
+
 
   async function handleForgotPassword(e) {
     e.preventDefault();
@@ -147,6 +153,7 @@ function Login({ onLogin }) {
           </>
         )}
       </div>
+
     </div>
   );
 }

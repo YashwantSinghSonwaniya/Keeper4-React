@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useHistory } from "react-router-dom";
 import { registerUser } from "../api";
 
-function Register() {
+function Register({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -36,14 +36,21 @@ function Register() {
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
 
+      const userKey = res.data.user.id
+        ? `user_${res.data.user.id}`
+        : `user_${encodeURIComponent(res.data.user.email || "unknown")}`;
+      sessionStorage.setItem(`guestImportPromptPending_${userKey}`, "true");
+      sessionStorage.setItem(`guestImportPromptHandled_${userKey}`, "false");
+
+      onLogin(res.data.user);
       history.push("/");
-      window.location.reload();
     } catch (err) {
       setError(err.response?.data?.error || "Registration failed.");
     } finally {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="auth-page">
@@ -96,6 +103,7 @@ function Register() {
           Already have an account? <Link to="/login">Login</Link>
         </p>
       </div>
+
     </div>
   );
 }

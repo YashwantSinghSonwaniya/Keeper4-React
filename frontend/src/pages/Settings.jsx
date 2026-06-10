@@ -1,9 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useHistory } from "react-router-dom";
 import toast from "react-hot-toast";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { changePassword, deleteAccount, updateProfile } from "../api";
+import {
+  changePassword,
+  deleteAccount,
+  updateProfile,
+  importNotes,
+} from "../api";
 
 function Settings({ user, isLoggedIn, onLogout }) {
   const history = useHistory();
@@ -16,6 +21,143 @@ function Settings({ user, isLoggedIn, onLogout }) {
   const [showEditName, setShowEditName] = useState(false);
   const [newName, setNewName] = useState(user?.name || "");
   const [nameLoading, setNameLoading] = useState(false);
+
+  const [guestNotesCount, setGuestNotesCount] = useState(0);
+  const [guestImportLoading, setGuestImportLoading] = useState(false);
+  const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
+
+  function getGuestPromptUserKey() {
+    if (!user) return null;
+    if (user.id) return `user_${user.id}`;
+    return `user_${encodeURIComponent(user.email || "unknown")}`;
+  }
+
+  function getGuestPromptDisabledKey(userKey) {
+    return `disableGuestImportPrompt_${userKey}`;
+  }
+
+  function getGuestImportPromptPendingKey(userKey) {
+    return `guestImportPromptPending_${userKey}`;
+  }
+
+  function getGuestImportPromptHandledKey(userKey) {
+    return `guestImportPromptHandled_${userKey}`;
+  }
+
+  function getGuestPromptLastTimestampKey(userKey) {
+    return `lastGuestImportPrompt_${userKey}`;
+  }
+
+  function getGuestNotesCount() {
+    const saved = localStorage.getItem("notes_guest");
+    if (!saved) return 0;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch (err) {
+      console.error("Could not parse guest notes:", err);
+      return 0;
+    }
+  }
+
+  function refreshGuestNotesCount() {
+    setGuestNotesCount(getGuestNotesCount());
+    const userKey = getGuestPromptUserKey();
+    setDisableGuestImportPrompt(
+      userKey
+        ? localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true"
+        : false,
+    );
+  }
+
+  useEffect(() => {
+    refreshGuestNotesCount();
+  }, [user]);
+
+  async function handleManualImportGuestNotes() {
+    if (!isLoggedIn) {
+      toast.error("Please sign in to import guest notes.");
+      return;
+    }
+
+    const saved = localStorage.getItem("notes_guest");
+    if (!saved) {
+      toast.error("No guest notes available.");
+      return;
+    }
+
+    let guestNotes = [];
+    try {
+      const parsed = JSON.parse(saved);
+      guestNotes = Array.isArray(parsed)
+        ? parsed.filter((item) => item && typeof item === "object")
+        : [];
+    } catch (err) {
+      console.error("Could not parse guest notes:", err);
+      toast.error("Unable to read guest notes.");
+      return;
+    }
+
+    if (guestNotes.length === 0) {
+      toast.error("No guest notes found to import.");
+      return;
+    }
+
+    const userKey = getGuestPromptUserKey();
+    if (!userKey) {
+      toast.error("Unable to determine current user.");
+      return;
+    }
+
+    setGuestImportLoading(true);
+    try {
+      const notesToImport = guestNotes.map((note, index) => ({
+        title: note.title || "",
+        content: note.content || "",
+        color: note.color || "#ffffff",
+        is_pinned: note.isPinned || note.is_pinned || false,
+        category: note.category || "none",
+        position: index,
+      }));
+
+      await importNotes(notesToImport);
+      localStorage.removeItem("notes_guest");
+      localStorage.setItem(`guestNotesImported_${userKey}`, "true");
+      localStorage.setItem(
+        getGuestPromptLastTimestampKey(userKey),
+        Date.now().toString(),
+      );
+      sessionStorage.setItem(getGuestImportPromptHandledKey(userKey), "true");
+      sessionStorage.setItem(getGuestImportPromptPendingKey(userKey), "false");
+
+      toast.success(
+        `Imported ${guestNotes.length} guest note${
+          guestNotes.length === 1 ? "" : "s"
+        }`,
+      );
+      refreshGuestNotesCount();
+    } catch (err) {
+      console.error("Failed to import guest notes:", err);
+      toast.error("Failed to import guest notes.");
+    } finally {
+      setGuestImportLoading(false);
+    }
+  }
+
+  function handleDisableGuestPromptToggle(e) {
+    const value = e.target.checked;
+    const userKey = getGuestPromptUserKey();
+    if (!userKey) {
+      toast.error("Unable to determine current user.");
+      return;
+    }
+
+    setDisableGuestImportPrompt(value);
+    localStorage.setItem(getGuestPromptDisabledKey(userKey), value ? "true" : "false");
+    toast.success(
+      value ? "Guest import reminders disabled." : "Guest import reminders enabled.",
+    );
+  }
 
   // Change password
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -285,7 +427,7 @@ function Settings({ user, isLoggedIn, onLogout }) {
           <div className="settings-section settings-section-muted">
             <h3 className="settings-section-title">
               <span className="material-icons">download</span>
-              Data
+              Data & Storage
             </h3>
             <div className="settings-item">
               <div className="settings-item-info">
@@ -295,6 +437,56 @@ function Settings({ user, isLoggedIn, onLogout }) {
                 </p>
               </div>
               <span className="settings-coming-soon">Coming soon</span>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3 className="settings-section-title">
+              <span className="material-icons">folder_shared</span>
+              Guest notes
+            </h3>
+            <div className="settings-item settings-item-col">
+              <div className="settings-item-info">
+                <p className="settings-item-label">Guest notes stored locally</p>
+                <p className="settings-item-desc">
+                  {guestNotesCount > 0
+                    ? `You have ${guestNotesCount} guest note${guestNotesCount === 1 ? "" : "s"} stored in this browser.`
+                    : "No guest notes are currently saved on this device."}
+                </p>
+              </div>
+              {guestNotesCount > 0 && isLoggedIn ? (
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  disabled={guestImportLoading}
+                  onClick={handleManualImportGuestNotes}
+                >
+                  {guestImportLoading ? "Importing..." : "Import guest notes"}
+                </button>
+              ) : (
+                <p className="settings-item-desc">
+                  {isLoggedIn
+                    ? "Sign in and return here after using guest mode to import notes into your account."
+                    : "Sign in or register to enable guest note import."}
+                </p>
+              )}
+            </div>
+
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <p className="settings-item-label">Disable automatic guest import prompts</p>
+                <p className="settings-item-desc">
+                  Turn this on to stop automatic reminders when guest notes exist.
+                </p>
+              </div>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={disableGuestImportPrompt}
+                  onChange={handleDisableGuestPromptToggle}
+                />
+                <span className="toggle-slider"></span>
+              </label>
             </div>
           </div>
 
