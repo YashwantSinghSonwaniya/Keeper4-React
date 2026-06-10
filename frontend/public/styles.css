@@ -1242,6 +1242,74 @@ button:disabled {
   transform: translateY(-1px);
 }
 
+
+.modal-voice-section {
+  flex-shrink: 0;
+  padding: 0 16px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.modal-voice-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 8px;
+  color: #805500;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.modal-voice-heading .material-icons {
+  color: #f5ba13;
+  font-size: 18px;
+}
+
+.modal-existing-voice {
+  margin-bottom: 10px;
+}
+
+.modal-voice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-voice-deleted-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(211, 47, 47, 0.08);
+  color: #9b1c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-voice-deleted-message > span:nth-child(2) {
+  flex: 1;
+}
+
+.modal-voice-deleted-message .material-icons {
+  font-size: 18px;
+}
+
+.modal-recorder-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-voice-help {
+  margin: 0;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* ======= FORGOT PASSWORD ======= */
 .forgot-password-link {
   text-align: center;
