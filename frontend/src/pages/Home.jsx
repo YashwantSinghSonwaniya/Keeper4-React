@@ -251,9 +251,16 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (e.key === "Escape") closeModal();
+      if (e.key !== "Escape") return;
+
+      if (showGuestVoiceUpgrade) {
+        setShowGuestVoiceUpgrade(false);
+        return;
+      }
+
+      closeModal();
     }
-    if (modalOpen) {
+    if (modalOpen || showGuestVoiceUpgrade) {
       document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
     }
@@ -261,7 +268,7 @@ function Home({ user, isLoggedIn, onLogout }) {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "unset";
     };
-  }, [modalOpen]);
+  }, [modalOpen, showGuestVoiceUpgrade]);
 
   const filteredNotes = notes.filter((note) => {
     const q = searchQuery.toLowerCase();
