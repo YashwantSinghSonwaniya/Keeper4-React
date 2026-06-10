@@ -1,10 +1,13 @@
 import React from "react";
+import ReactDOM from "react-dom";
 import { useHistory } from "react-router-dom";
 
 function GuestVoiceUpgradeModal({ open, onClose }) {
   const history = useHistory();
 
   if (!open) return null;
+
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
 
   function handleSignIn() {
     history.push("/login");
@@ -20,7 +23,7 @@ function GuestVoiceUpgradeModal({ open, onClose }) {
     onClose();
   }
 
-  return (
+  const modal = (
     <div className="guest-voice-backdrop" onClick={handleLater}>
       <div
         className="guest-voice-card"
@@ -58,6 +61,8 @@ function GuestVoiceUpgradeModal({ open, onClose }) {
       </div>
     </div>
   );
+
+  return portalTarget ? ReactDOM.createPortal(modal, portalTarget) : modal;
 }
 
 export default GuestVoiceUpgradeModal;
