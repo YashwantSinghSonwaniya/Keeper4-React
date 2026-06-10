@@ -7,6 +7,8 @@ import Footer from "../components/Footer";
 import Note from "../components/Note";
 import CreateArea from "../components/CreateArea";
 import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
+import VoiceRecorder from "../components/VoiceRecorder";
+import VoiceNotePlayer from "../components/VoiceNotePlayer";
 
 import {
   getNotes,
@@ -18,6 +20,8 @@ import {
   reorderNotes,
   importNotes,
   uploadVoiceNote,
+  deleteVoiceNote,
+  updateCategory,
 } from "../api";
 
 import {
@@ -38,7 +42,6 @@ import {
 import SortableNote from "../components/SortableNote";
 import GuestImportModal from "../components/GuestImportModal";
 
-import { updateCategory } from "../api";
 import CATEGORIES from "../categories";
 
 function Home({ user, isLoggedIn, onLogout }) {
@@ -47,9 +50,18 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [loading, setLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalNote, setModalNote] = useState({ title: "", content: "" });
+  const [modalNote, setModalNote] = useState({
+    title: "",
+    content: "",
+    category: "none",
+  });
   const [modalNoteId, setModalNoteId] = useState(null);
   const [modalColor, setModalColor] = useState("#ffffff");
+  const [modalVoiceNote, setModalVoiceNote] = useState(null);
+  const [modalVoiceRecording, setModalVoiceRecording] = useState(null);
+  const [modalVoiceDeleted, setModalVoiceDeleted] = useState(false);
+  const [modalRecorderKey, setModalRecorderKey] = useState(0);
+  const [modalSaving, setModalSaving] = useState(false);
 
   const [deleteConfirm, setDeleteConfirm] = useState({
     open: false,
@@ -77,8 +89,10 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [showGuestImportModal, setShowGuestImportModal] = useState(false);
   const [guestNotesToImport, setGuestNotesToImport] = useState([]);
-  const [deleteGuestNotesAfterImport, setDeleteGuestNotesAfterImport] = useState(true);
-  const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
+  const [deleteGuestNotesAfterImport, setDeleteGuestNotesAfterImport] =
+    useState(true);
+  const [disableGuestImportPrompt, setDisableGuestImportPrompt] =
+    useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
 
@@ -110,7 +124,9 @@ function Home({ user, isLoggedIn, onLogout }) {
 
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+      return Array.isArray(parsed)
+        ? parsed.filter((item) => item && typeof item === "object")
+        : [];
     } catch (err) {
       console.error("Could not parse guest notes:", err);
       localStorage.removeItem("notes_guest");
@@ -197,9 +213,11 @@ function Home({ user, isLoggedIn, onLogout }) {
     if (!userKey) return;
 
     const pending =
-      sessionStorage.getItem(getGuestImportPromptPendingKey(userKey)) === "true";
+      sessionStorage.getItem(getGuestImportPromptPendingKey(userKey)) ===
+      "true";
     const handled =
-      sessionStorage.getItem(getGuestImportPromptHandledKey(userKey)) === "true";
+      sessionStorage.getItem(getGuestImportPromptHandledKey(userKey)) ===
+      "true";
     const disabledLocal =
       localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true";
     const imported =
@@ -268,7 +286,10 @@ function Home({ user, isLoggedIn, onLogout }) {
 
         if (voiceRecording?.blob) {
           try {
-            const voiceRes = await uploadVoiceNote(savedNote.id, voiceRecording);
+            const voiceRes = await uploadVoiceNote(
+              savedNote.id,
+              voiceRecording,
+            );
             savedNote = {
               ...savedNote,
               voice_note: voiceRes.data.voice_note,
@@ -342,24 +363,120 @@ function Home({ user, isLoggedIn, onLogout }) {
     }
     if (!note) return;
     setModalNoteId(id);
-    setModalNote({ title: note.title || "", content: note.content || "" });
+    setModalNote({
+      title: note.title || "",
+      content: note.content || "",
+      category: note.category || "none",
+    });
     setModalColor(note.color || "#ffffff");
+    setModalVoiceNote(note.voice_note || null);
+    setModalVoiceRecording(null);
+    setModalVoiceDeleted(false);
+    setModalRecorderKey((prev) => prev + 1);
     setModalOpen(true);
   }
 
+  function handleModalRecordingComplete(recording) {
+    setModalVoiceRecording(recording);
+    if (modalVoiceNote) {
+      setModalVoiceDeleted(false);
+    }
+  }
+
+  function handleModalRecordingDelete() {
+    setModalVoiceRecording(null);
+  }
+
+  function handleModalVoiceDelete() {
+    setModalVoiceDeleted(true);
+    setModalVoiceRecording(null);
+    setModalRecorderKey((prev) => prev + 1);
+  }
+
+  function undoModalVoiceDelete() {
+    setModalVoiceDeleted(false);
+  }
+
   async function saveModalNote() {
-    if (modalNote.title.trim() === "" && modalNote.content.trim() === "")
+    const hasText =
+      modalNote.title.trim() !== "" || modalNote.content.trim() !== "";
+    const keepsExistingVoice = Boolean(modalVoiceNote && !modalVoiceDeleted);
+    const hasNewVoice = Boolean(modalVoiceRecording?.blob);
+
+    if (!hasText && !keepsExistingVoice && !hasNewVoice) {
+      toast.error("Title, content, or a voice note is required.");
       return;
+    }
+
+    setModalSaving(true);
 
     if (isLoggedIn) {
+      let finalVoiceNote = keepsExistingVoice ? modalVoiceNote : null;
+
       try {
+        if ((modalVoiceDeleted || hasNewVoice) && modalVoiceNote?.id) {
+          try {
+            await deleteVoiceNote(modalVoiceNote.id);
+            finalVoiceNote = null;
+          } catch (err) {
+            console.error("Failed to delete voice note:", err);
+            toast.error(
+              err.response?.data?.error || "Failed to delete voice note.",
+            );
+            return;
+          }
+        }
+
+        if (hasNewVoice) {
+          try {
+            const voiceRes = await uploadVoiceNote(
+              modalNoteId,
+              modalVoiceRecording,
+            );
+            finalVoiceNote = voiceRes.data.voice_note;
+          } catch (err) {
+            console.error("Failed to upload replacement voice note:", err);
+            toast.error(
+              err.response?.data?.error ||
+                (modalVoiceNote
+                  ? "Old voice note removed, but replacement upload failed. Try saving again to retry."
+                  : "Voice note upload failed. Try saving again to retry."),
+            );
+
+            if (modalVoiceNote?.id) {
+              setModalVoiceNote(null);
+              setModalVoiceDeleted(false);
+              setNotes((prev) =>
+                prev.map((n) =>
+                  n.id === modalNoteId ? { ...n, voice_note: null } : n,
+                ),
+              );
+            }
+
+            return;
+          }
+        }
+
         const res = await updateNote(modalNoteId, modalNote);
+
         setNotes((prev) =>
-          prev.map((n) => (n.id === modalNoteId ? res.data : n)),
+          prev.map((n) =>
+            n.id === modalNoteId
+              ? {
+                  ...n,
+                  ...res.data,
+                  voice_note: finalVoiceNote,
+                }
+              : n,
+          ),
         );
         toast.success("Note updated!");
+        closeModal();
       } catch (err) {
+        console.error("Failed to update note:", err);
         toast.error("Failed to update note.");
+      } finally {
+        setModalSaving(false);
       }
     } else {
       // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
@@ -370,14 +487,21 @@ function Home({ user, isLoggedIn, onLogout }) {
         ),
       );
       toast.success("Note updated!");
+      setModalSaving(false);
+      closeModal();
     }
-    closeModal();
   }
 
   function closeModal() {
     setModalOpen(false);
-    setModalNote({ title: "", content: "" });
+    setModalNote({ title: "", content: "", category: "none" });
     setModalNoteId(null);
+    setModalColor("#ffffff");
+    setModalVoiceNote(null);
+    setModalVoiceRecording(null);
+    setModalVoiceDeleted(false);
+    setModalSaving(false);
+    setModalRecorderKey((prev) => prev + 1);
   }
 
   async function handleImportGuestNotes() {
@@ -409,7 +533,10 @@ function Home({ user, isLoggedIn, onLogout }) {
           getGuestPromptLastTimestampKey(userKey),
           Date.now().toString(),
         );
-        sessionStorage.setItem(getGuestImportPromptPendingKey(userKey), "false");
+        sessionStorage.setItem(
+          getGuestImportPromptPendingKey(userKey),
+          "false",
+        );
       }
       toast.success(`Imported ${guestNotesToImport.length} notes successfully`);
       await loadNotes();
@@ -447,7 +574,10 @@ function Home({ user, isLoggedIn, onLogout }) {
 
     setDisableGuestImportPrompt((prev) => {
       const next = !prev;
-      localStorage.setItem(getGuestPromptDisabledKey(userKey), next ? "true" : "false");
+      localStorage.setItem(
+        getGuestPromptDisabledKey(userKey),
+        next ? "true" : "false",
+      );
       return next;
     });
   }
@@ -467,7 +597,9 @@ function Home({ user, isLoggedIn, onLogout }) {
       // ✅ FIX: Decode prefixed ID ("pinned-5" or "unpinned-3") to get global index
       const globalIndex = parseInt(String(id).split("-")[1], 10);
       setNotes((prev) =>
-        prev.map((note, index) => (index === globalIndex ? { ...note, color } : note)),
+        prev.map((note, index) =>
+          index === globalIndex ? { ...note, color } : note,
+        ),
       );
       toast.success("Color updated!");
     }
@@ -500,7 +632,10 @@ function Home({ user, isLoggedIn, onLogout }) {
   // ✅ Helper to find global index in full notes array (for guest mode)
   function getGlobalNoteIndex(noteItem) {
     return notes.findIndex(
-      (n) => n.title === noteItem.title && n.content === noteItem.content && n.color === noteItem.color
+      (n) =>
+        n.title === noteItem.title &&
+        n.content === noteItem.content &&
+        n.color === noteItem.color,
     );
   }
 
@@ -704,11 +839,15 @@ function Home({ user, isLoggedIn, onLogout }) {
                   onDragEnd={(e) => handleDragEnd(e, "pinned")}
                 >
                   <SortableContext
-                    items={pinnedNotes.map((n, i) => (isLoggedIn ? n.id : `pinned-${i}`))}
+                    items={pinnedNotes.map((n, i) =>
+                      isLoggedIn ? n.id : `pinned-${i}`,
+                    )}
                     strategy={rectSortingStrategy}
                   >
                     <div className="notes-grid">
-                      {pinnedNotes.map((note, i) => renderNote(note, i, "pinned"))}
+                      {pinnedNotes.map((note, i) =>
+                        renderNote(note, i, "pinned"),
+                      )}
                     </div>
                   </SortableContext>
                 </DndContext>
@@ -742,17 +881,23 @@ function Home({ user, isLoggedIn, onLogout }) {
                   onDragEnd={(e) => handleDragEnd(e, "unpinned")}
                 >
                   <SortableContext
-                    items={unpinnedNotes.map((n, i) => (isLoggedIn ? n.id : `unpinned-${i}`))}
+                    items={unpinnedNotes.map((n, i) =>
+                      isLoggedIn ? n.id : `unpinned-${i}`,
+                    )}
                     strategy={rectSortingStrategy}
                   >
                     <div className="notes-grid">
-                      {unpinnedNotes.map((note, i) => renderNote(note, i, "unpinned"))}
+                      {unpinnedNotes.map((note, i) =>
+                        renderNote(note, i, "unpinned"),
+                      )}
                     </div>
                   </SortableContext>
                 </DndContext>
               ) : (
                 <div className="notes-grid">
-                  {unpinnedNotes.map((note, i) => renderNote(note, i, "unpinned"))}
+                  {unpinnedNotes.map((note, i) =>
+                    renderNote(note, i, "unpinned"),
+                  )}
                 </div>
               )}
             </div>
@@ -784,7 +929,8 @@ function Home({ user, isLoggedIn, onLogout }) {
         <div
           className="modal-overlay"
           onClick={(e) => {
-            if (e.target.classList.contains("modal-overlay")) closeModal();
+            if (!modalSaving && e.target.classList.contains("modal-overlay"))
+              closeModal();
           }}
         >
           <div className="modal-card" style={{ background: modalColor }}>
@@ -798,7 +944,11 @@ function Home({ user, isLoggedIn, onLogout }) {
                   setModalNote((prev) => ({ ...prev, title: value }));
                 }}
               />
-              <button className="modal-close-btn" onClick={closeModal}>
+              <button
+                className="modal-close-btn"
+                onClick={closeModal}
+                disabled={modalSaving}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -812,12 +962,79 @@ function Home({ user, isLoggedIn, onLogout }) {
                 setModalNote((prev) => ({ ...prev, content: value }));
               }}
             />
+
+            <div className="modal-voice-section">
+              <div className="modal-voice-heading">
+                <span className="material-icons">mic</span>
+                <span>Voice note</span>
+              </div>
+
+              {modalVoiceNote && !modalVoiceDeleted && !modalVoiceRecording && (
+                <div className="modal-existing-voice">
+                  <VoiceNotePlayer
+                    voiceNote={modalVoiceNote}
+                    isDark={modalColor === "#232323"}
+                  />
+                  <div className="modal-voice-actions">
+                    <button
+                      type="button"
+                      className="voice-text-btn"
+                      onClick={handleModalVoiceDelete}
+                      disabled={modalSaving}
+                    >
+                      <span className="material-icons">delete</span>
+                      Delete voice note
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {modalVoiceNote && modalVoiceDeleted && !modalVoiceRecording && (
+                <div className="modal-voice-deleted-message">
+                  <span className="material-icons">delete</span>
+                  <span>Voice note will be deleted when you save.</span>
+                  <button
+                    type="button"
+                    className="voice-text-btn"
+                    onClick={undoModalVoiceDelete}
+                    disabled={modalSaving}
+                  >
+                    Undo
+                  </button>
+                </div>
+              )}
+
+              <div className="modal-recorder-wrap">
+                <p className="modal-voice-help">
+                  {modalVoiceNote && !modalVoiceDeleted
+                    ? "Record and attach a new clip to replace the current voice note on save."
+                    : "Record and attach a voice note to save with this note."}
+                </p>
+                <VoiceRecorder
+                  key={modalRecorderKey}
+                  isLoggedIn={isLoggedIn}
+                  onRecordingComplete={handleModalRecordingComplete}
+                  onRecordingDelete={handleModalRecordingDelete}
+                  onGuestAction={() => setShowGuestVoiceUpgrade(true)}
+                  disabled={modalSaving}
+                />
+              </div>
+            </div>
+
             <div className="modal-footer">
-              <button className="modal-cancel-btn" onClick={closeModal}>
+              <button
+                className="modal-cancel-btn"
+                onClick={closeModal}
+                disabled={modalSaving}
+              >
                 Cancel
               </button>
-              <button className="modal-save-btn" onClick={saveModalNote}>
-                Save
+              <button
+                className="modal-save-btn"
+                onClick={saveModalNote}
+                disabled={modalSaving}
+              >
+                {modalSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
