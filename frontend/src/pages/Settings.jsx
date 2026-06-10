@@ -9,6 +9,10 @@ import {
   updateProfile,
   importNotes,
 } from "../api";
+import {
+  loadSpeechSettings,
+  saveSpeechSettings,
+} from "../speechSettings";
 
 function Settings({ user, isLoggedIn, onLogout }) {
   const history = useHistory();
@@ -17,6 +21,14 @@ function Settings({ user, isLoggedIn, onLogout }) {
   const [skipDeleteConfirm, setSkipDeleteConfirm] = useState(
     localStorage.getItem("skipDeleteConfirm") === "true",
   );
+  const speechSupported =
+    typeof window !== "undefined" &&
+    "speechSynthesis" in window &&
+    "SpeechSynthesisUtterance" in window;
+  const [speechSettings, setSpeechSettings] = useState(() =>
+    loadSpeechSettings(),
+  );
+  const [speechVoices, setSpeechVoices] = useState([]);
 
   const [showEditName, setShowEditName] = useState(false);
   const [newName, setNewName] = useState(user?.name || "");
@@ -73,6 +85,42 @@ function Settings({ user, isLoggedIn, onLogout }) {
   useEffect(() => {
     refreshGuestNotesCount();
   }, [user]);
+
+  useEffect(() => {
+    if (!speechSupported) return undefined;
+
+    function loadVoices() {
+      setSpeechVoices(window.speechSynthesis.getVoices() || []);
+    }
+
+    loadVoices();
+    if (typeof window.speechSynthesis.addEventListener === "function") {
+      window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+    } else {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if (typeof window.speechSynthesis.removeEventListener === "function") {
+        window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+      } else if (window.speechSynthesis.onvoiceschanged === loadVoices) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [speechSupported]);
+
+  function updateSpeechSetting(name, value) {
+    if (!speechSupported) {
+      toast.error("Speech reading is not supported in this browser.");
+      return;
+    }
+
+    const nextSettings = saveSpeechSettings({
+      ...speechSettings,
+      [name]: name === "voiceURI" ? value : Number(value),
+    });
+    setSpeechSettings(nextSettings);
+  }
 
   async function handleManualImportGuestNotes() {
     if (!isLoggedIn) {
@@ -289,6 +337,81 @@ function Settings({ user, isLoggedIn, onLogout }) {
                 />
                 <span className="toggle-slider"></span>
               </label>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3 className="settings-section-title">
+              <span aria-hidden="true">🔊</span>
+              Speech Settings
+            </h3>
+
+            {!speechSupported && (
+              <div className="settings-alert">
+                Speech reading is not supported in this browser.
+              </div>
+            )}
+
+            <div className="settings-item settings-item-col speech-setting-item">
+              <div className="settings-item-info">
+                <p className="settings-item-label">Speech Rate</p>
+                <p className="settings-item-desc">
+                  Choose how quickly notes are read aloud. Current: {speechSettings.rate.toFixed(1)}x
+                </p>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={speechSettings.rate}
+                onChange={(e) => updateSpeechSetting("rate", e.target.value)}
+                disabled={!speechSupported}
+                className="settings-range"
+              />
+            </div>
+
+            <div className="settings-item settings-item-col speech-setting-item">
+              <div className="settings-item-info">
+                <p className="settings-item-label">Pitch</p>
+                <p className="settings-item-desc">
+                  Adjust the voice pitch. Current: {speechSettings.pitch.toFixed(1)}
+                </p>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={speechSettings.pitch}
+                onChange={(e) => updateSpeechSetting("pitch", e.target.value)}
+                disabled={!speechSupported}
+                className="settings-range"
+              />
+            </div>
+
+            <div className="settings-item settings-item-col speech-setting-item">
+              <div className="settings-item-info">
+                <p className="settings-item-label">Voice Selection</p>
+                <p className="settings-item-desc">
+                  {speechVoices.length > 0
+                    ? "Pick one of the voices available in this browser."
+                    : "No browser voices are listed yet. The default browser voice will be used."}
+                </p>
+              </div>
+              <select
+                value={speechSettings.voiceURI}
+                onChange={(e) => updateSpeechSetting("voiceURI", e.target.value)}
+                disabled={!speechSupported || speechVoices.length === 0}
+                className="settings-select"
+              >
+                <option value="">Browser default voice</option>
+                {speechVoices.map((voice) => (
+                  <option key={voice.voiceURI} value={voice.voiceURI}>
+                    {voice.name} {voice.lang ? `(${voice.lang})` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

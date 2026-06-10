@@ -27,6 +27,19 @@ function Note(props) {
   const categoryBtnRef = useRef(null);
 
   const isDark = props.color === "#232323";
+  const speechState = props.speechState || {};
+  const isSpeechActive = Boolean(speechState.isActive);
+  const isSpeechReading = Boolean(speechState.isReading);
+
+  function handleReadClick(e) {
+    e.stopPropagation();
+    if (props.onReadAloud) {
+      props.onReadAloud(props.id, {
+        title: props.title,
+        content: props.content,
+      });
+    }
+  }
 
   const currentCategory = CATEGORIES.find(
     (c) => c.id === (props.category || "none")
@@ -103,7 +116,7 @@ function Note(props) {
 
   return (
     <div
-      className="note"
+      className={`note ${isSpeechReading ? "note-reading" : ""}`}
       style={{ background: props.color || "#ffffff" }}
     >
       {/* Pin button */}
@@ -199,8 +212,34 @@ function Note(props) {
         isDark={isDark}
       />
 
+      {isSpeechActive && (
+        <div className={`reading-indicator ${isDark ? "reading-indicator-dark" : ""}`}>
+          <span className="speaker-pulse" aria-hidden="true">
+            🔊
+          </span>
+          <span>{isSpeechReading ? "Reading..." : "Paused"}</span>
+        </div>
+      )}
+
       {/* Note actions */}
       <div className="note-actions">
+        {/* Read aloud */}
+        <button
+          className={`read-aloud-btn ${isSpeechActive ? "read-aloud-active" : ""}`}
+          onClick={handleReadClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          title="Read aloud"
+          aria-label={`${speechState.label || "Read"} note aloud`}
+          style={{ color: isSpeechActive ? "#f5ba13" : isDark ? "#ccc" : "#5f6368" }}
+        >
+          <span className="read-aloud-icon" aria-hidden="true">
+            {speechState.icon || "🔊"}
+          </span>
+          <span className="read-aloud-label">{speechState.label || "Read"}</span>
+        </button>
+
         {/* Color */}
         <button
           ref={paletteBtnRef}

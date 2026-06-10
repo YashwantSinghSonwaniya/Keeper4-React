@@ -5,10 +5,10 @@ Current Features:
 4. Drag and drop        
 5. Categories/Tags       
 6. Transfer guest notes
+8. Voice notes 🎤
+9. Speech reading 🔊
 
 Upcoming Features:
-8. Voice notes 🎤       
-9. Speech reading 🔊    
 10. Export notes         
 11. Forgot password email 
 12. Google login  
