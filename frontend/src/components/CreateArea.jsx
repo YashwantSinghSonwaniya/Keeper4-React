@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import VoiceRecorder from "./VoiceRecorder";
 
 const addSound = new Audio("/sounds/addNote.wav");
 const warningSound = new Audio("/sounds/warningSound.mp3");
@@ -10,6 +11,9 @@ function CreateArea(props) {
   });
   const [isExpanded, setExpanded] = useState(false);
   const [error, setError] = useState("");
+  const [voiceRecording, setVoiceRecording] = useState(null);
+  const [recorderKey, setRecorderKey] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -31,31 +35,42 @@ function CreateArea(props) {
     }
   }, [props.isEditing, props.editNote]);
 
-  function submitNote(event) {
+  async function submitNote(event) {
     event.preventDefault();
 
+    const hasText =
+      titleName.title.trim() !== "" || titleName.content.trim() !== "";
+    const hasVoice = Boolean(voiceRecording?.blob);
+
     if (
-      titleName.title.trim() === "" &&
-      titleName.content.trim() === ""
+      !hasText &&
+      !hasVoice
     ) {
       warningSound.currentTime = 0;
       warningSound.play();
-      setError("⚠️ Title or content is required.");
+      setError("Title, content, or a voice note is required.");
       return;
     }
 
     setError("");
-    addSound.currentTime = 0;
-    addSound.play();
+    setSaving(true);
 
-    if (props.isEditing) {
-      props.onUpdate(titleName);
-    } else {
-      props.onAdd(titleName);
+    try {
+      const saved = props.isEditing
+        ? await props.onUpdate(titleName)
+        : await props.onAdd(titleName, voiceRecording);
+
+      if (saved === false) return;
+
+      addSound.currentTime = 0;
+      addSound.play();
+      setTitleName({ title: "", content: "" });
+      setVoiceRecording(null);
+      setRecorderKey((prev) => prev + 1);
+      setExpanded(false);
+    } finally {
+      setSaving(false);
     }
-
-    setTitleName({ title: "", content: "" });
-    setExpanded(false);
   }
 
   const charCount = titleName.content.length;
@@ -95,7 +110,20 @@ function CreateArea(props) {
       )}
 
       {isExpanded && (
-        <button type="submit">
+        <div className="create-voice-row">
+          <VoiceRecorder
+            key={recorderKey}
+            isLoggedIn={props.isLoggedIn}
+            onRecordingComplete={setVoiceRecording}
+            onRecordingDelete={() => setVoiceRecording(null)}
+            onGuestAction={props.onGuestVoiceAction}
+            disabled={saving}
+          />
+        </div>
+      )}
+
+      {isExpanded && (
+        <button type="submit" className="create-submit-btn" disabled={saving}>
           <span className="material-icons">
             {props.isEditing ? "edit" : "add"}
           </span>

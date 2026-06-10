@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import CATEGORIES from "../categories";
+import VoiceNotePlayer from "./VoiceNotePlayer";
 
 const NOTE_COLORS = [
   { name: "Default", hex: "#ffffff" },
@@ -192,6 +193,11 @@ function Note(props) {
       <p style={{ color: isDark ? "#ccc" : "#555" }}>
         {props.content}
       </p>
+
+      <VoiceNotePlayer
+        voiceNote={props.voiceNote}
+        isDark={isDark}
+      />
 
       {/* Note actions */}
       <div className="note-actions">

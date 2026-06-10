@@ -30,6 +30,7 @@ function SortableNote(props) {
         color={props.color}
         isPinned={props.isPinned}
         category={props.category}
+        voiceNote={props.voiceNote}
         onDelete={props.onDelete}
         onEdit={props.onEdit}
         onColorChange={props.onColorChange}

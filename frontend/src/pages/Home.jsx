@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Note from "../components/Note";
 import CreateArea from "../components/CreateArea";
+import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
 
 import {
   getNotes,
@@ -16,6 +17,7 @@ import {
   togglePinNote,
   reorderNotes,
   importNotes,
+  uploadVoiceNote,
 } from "../api";
 
 import {
@@ -78,6 +80,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [deleteGuestNotesAfterImport, setDeleteGuestNotesAfterImport] = useState(true);
   const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
+  const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
 
   function getGuestPromptUserKey() {
     if (!user) return null;
@@ -257,14 +260,36 @@ function Home({ user, isLoggedIn, onLogout }) {
     (n) => !n.isPinned && !n.is_pinned,
   );
 
-  async function addNote(newNote) {
+  async function addNote(newNote, voiceRecording) {
     if (isLoggedIn) {
       try {
         const res = await createNote(newNote);
-        setNotes((prev) => [res.data, ...prev]);
-        toast.success("Note added!");
+        let savedNote = res.data;
+
+        if (voiceRecording?.blob) {
+          try {
+            const voiceRes = await uploadVoiceNote(savedNote.id, voiceRecording);
+            savedNote = {
+              ...savedNote,
+              voice_note: voiceRes.data.voice_note,
+            };
+            toast.success("Note with voice added!");
+          } catch (err) {
+            console.error("Failed to upload voice note:", err);
+            toast.error(
+              err.response?.data?.error ||
+                "Note saved, but voice note upload failed.",
+            );
+          }
+        } else {
+          toast.success("Note added!");
+        }
+
+        setNotes((prev) => [savedNote, ...prev]);
+        return true;
       } catch (err) {
         toast.error("Failed to add note.");
+        return false;
       }
     } else {
       setNotes((prev) => [
@@ -272,6 +297,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         ...prev,
       ]);
       toast.success("Note added!");
+      return true;
     }
   }
 
@@ -426,14 +452,6 @@ function Home({ user, isLoggedIn, onLogout }) {
     });
   }
 
-  function handleToggleDisablePrompt() {
-    setDisableGuestImportPrompt((prev) => {
-      const next = !prev;
-      localStorage.setItem("disableGuestImportPrompt", next ? "true" : "false");
-      return next;
-    });
-  }
-
   async function changeNoteColor(id, color) {
     if (isLoggedIn) {
       try {
@@ -507,6 +525,7 @@ function Home({ user, isLoggedIn, onLogout }) {
           color={noteItem.color || "#ffffff"}
           isPinned={isPinned}
           category={noteItem.category || "none"}
+          voiceNote={noteItem.voice_note}
           onDelete={confirmDelete}
           onEdit={editNoteHandler}
           onColorChange={changeNoteColor}
@@ -526,6 +545,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         color={noteItem.color || "#ffffff"}
         isPinned={isPinned}
         category={noteItem.category || "none"}
+        voiceNote={noteItem.voice_note}
         onDelete={confirmDelete}
         onEdit={editNoteHandler}
         onColorChange={changeNoteColor}
@@ -606,6 +626,8 @@ function Home({ user, isLoggedIn, onLogout }) {
           onUpdate={() => {}}
           isEditing={false}
           editNote={{ title: "", content: "" }}
+          isLoggedIn={isLoggedIn}
+          onGuestVoiceAction={() => setShowGuestVoiceUpgrade(true)}
         />
       </div>
 
@@ -748,6 +770,11 @@ function Home({ user, isLoggedIn, onLogout }) {
         onImport={handleImportGuestNotes}
         onLater={handleSkipGuestImport}
         loading={guestImportLoading}
+      />
+
+      <GuestVoiceUpgradeModal
+        open={showGuestVoiceUpgrade}
+        onClose={() => setShowGuestVoiceUpgrade(false)}
       />
 
       <Footer />

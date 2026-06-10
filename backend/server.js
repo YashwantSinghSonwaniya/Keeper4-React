@@ -1,9 +1,11 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
 const notesRoutes = require("./routes/notes");
+const voiceNotesRoutes = require("./routes/voiceNotes");
 
 const app = express();
 
@@ -13,10 +15,12 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/notes", notesRoutes);
+app.use("/api/voice-notes", voiceNotesRoutes);
 
 // Health check
 app.get("/", (req, res) => {

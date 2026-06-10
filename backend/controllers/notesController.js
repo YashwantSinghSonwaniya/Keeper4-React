@@ -4,7 +4,27 @@ const pool = require("../db");
 async function getNotes(req, res) {
   try {
     const result = await pool.query(
-      "SELECT * FROM notes WHERE user_id = $1 ORDER BY is_pinned DESC, position ASC, created_at DESC",
+      `SELECT
+         n.*,
+         CASE
+           WHEN vn.id IS NULL THEN NULL
+           ELSE json_build_object(
+             'id', vn.id,
+             'audio_url', vn.audio_url,
+             'duration', vn.duration,
+             'file_size', vn.file_size,
+             'mime_type', vn.mime_type,
+             'storage_provider', vn.storage_provider,
+             'storage_key', vn.storage_key,
+             'created_at', vn.created_at,
+             'updated_at', vn.updated_at
+           )
+         END AS voice_note
+       FROM notes n
+       LEFT JOIN voice_notes vn
+         ON vn.note_id = n.id AND vn.user_id = n.user_id
+       WHERE n.user_id = $1
+       ORDER BY n.is_pinned DESC, n.position ASC, n.created_at DESC`,
       [req.user.id]
     );
     res.json(result.rows);
