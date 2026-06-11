@@ -5,6 +5,12 @@ import {
   loadSpeechSettings,
 } from "../speechSettings";
 
+// ─── Debug flag ──────────────────────────────────────────────────────────────
+// Set to true during development to see voice diagnostics in the console.
+// Remove or set to false before production build.
+const DEBUG_SPEECH = process.env.NODE_ENV === "development";
+// ─────────────────────────────────────────────────────────────────────────────
+
 function isSpeechSupported() {
   return (
     typeof window !== "undefined" &&
@@ -34,6 +40,47 @@ function getSpeechErrorMessage(event) {
   }
   return "Speech reading stopped unexpectedly.";
 }
+
+// ─── Phase 1: Smart voice picker ─────────────────────────────────────────────
+//
+// Priority order (highest quality to lowest):
+//   1. Google voices with en-US  — best quality on Chrome/Android
+//   2. Microsoft Neural voices   — best quality on Edge/Windows
+//   3. Well-known natural voices — Samantha (macOS), Karen (iOS),
+//                                  Daniel (UK), Moira (Irish)
+//   4. Any en-US voice           — any local US English
+//   5. Any English voice         — fallback to any English
+//   6. null                      — let the browser decide (current behaviour)
+//
+// Only used when voiceURI is "" (the default / "Browser default" option).
+// Any explicit user selection in Settings bypasses this entirely.
+//
+function pickBestVoice(voices, preferredURI) {
+  // 1. User has explicitly chosen a voice in Settings — always honour it
+  if (preferredURI) {
+    const exact = voices.find((v) => v.voiceURI === preferredURI);
+    if (exact) return exact;
+    // voiceURI saved but no longer available (e.g. different browser/OS)
+    // fall through to auto-pick rather than silently using browser default
+  }
+
+  // 2. Auto-pick the highest-quality English voice available
+  const tests = [
+    (v) => /google/i.test(v.name) && /en[-_]US/i.test(v.lang),
+    (v) => /microsoft/i.test(v.name) && /neural/i.test(v.name) && /en/i.test(v.lang),
+    (v) => /samantha|karen|daniel|moira|aria|guy/i.test(v.name),
+    (v) => /en[-_]US/i.test(v.lang),
+    (v) => /en/i.test(v.lang),
+  ];
+
+  for (const test of tests) {
+    const found = voices.find(test);
+    if (found) return found;
+  }
+
+  return null; // let the browser decide — same as before Phase 1
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function useSpeechReader() {
   const supported = isSpeechSupported();
@@ -141,9 +188,10 @@ function useSpeechReader() {
 
       const utterance = new window.SpeechSynthesisUtterance(text);
       const latestVoices = reloadVoices();
-      const selectedVoice = latestVoices.find(
-        (voice) => voice.voiceURI === latestSettings.voiceURI,
-      );
+
+      // ── Phase 1: use smart picker instead of exact-match-only ──────────────
+      const selectedVoice = pickBestVoice(latestVoices, latestSettings.voiceURI);
+      // ───────────────────────────────────────────────────────────────────────
 
       if (latestVoices.length === 0 && !noVoicesNoticeShownRef.current) {
         toast("No browser voices found. Using the default voice.");
@@ -155,6 +203,21 @@ function useSpeechReader() {
       }
       utterance.rate = latestSettings.rate;
       utterance.pitch = latestSettings.pitch;
+
+      // ── Phase 1: debug diagnostics (dev only) ──────────────────────────────
+      if (DEBUG_SPEECH) {
+        console.group("[SpeechReader] Starting utterance");
+        console.log("Voice selected :", selectedVoice ? selectedVoice.name : "browser default");
+        console.log("Voice lang     :", selectedVoice ? selectedVoice.lang : "unknown");
+        console.log("Voice URI      :", selectedVoice ? selectedVoice.voiceURI : "—");
+        console.log("Rate           :", utterance.rate);
+        console.log("Pitch          :", utterance.pitch);
+        console.log("Text length    :", text.length, "characters");
+        console.log("Voices available:", latestVoices.length);
+        console.log("User pref URI  :", latestSettings.voiceURI || "(none — auto)");
+        console.groupEnd();
+      }
+      // ───────────────────────────────────────────────────────────────────────
 
       utteranceRef.current = utterance;
       activeIdRef.current = noteId;

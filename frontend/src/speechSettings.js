@@ -1,8 +1,14 @@
 export const SPEECH_SETTINGS_KEY = "keeperSpeechSettings";
 
+// ─── Phase 1 improvement ────────────────────────────────────────────────────
+// rate  : 0.9  (was 1.0) — sounds calmer and more natural on all engines
+// pitch : 1.05 (was 1.0) — adds a small amount of intonation variance;
+//                          prevents the completely flat "robot" quality
+// voiceURI: ""            — empty means "let pickBestVoice() choose"
+// ────────────────────────────────────────────────────────────────────────────
 export const DEFAULT_SPEECH_SETTINGS = {
-  rate: 1,
-  pitch: 1,
+  rate: 0.9,
+  pitch: 1.05,
   voiceURI: "",
 };
 
