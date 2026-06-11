@@ -20,28 +20,31 @@ function getVoiceMetadata(note) {
   };
 }
 
+export function normalizeExportNote(note) {
+  const source = note && typeof note === "object" ? note : {};
+  const normalized = {
+    title: safeString(source.title),
+    content: safeString(source.content),
+    category: safeString(source.category || "none"),
+    pinned: Boolean(source.is_pinned || source.isPinned || source.pinned),
+    created_at: normalizeDate(source.created_at || source.createdAt),
+    updated_at: normalizeDate(source.updated_at || source.updatedAt),
+  };
+
+  const voice = getVoiceMetadata(source);
+  if (voice) {
+    normalized.voice_note = voice;
+  }
+
+  return normalized;
+}
+
 export function normalizeExportNotes(notes) {
   if (!Array.isArray(notes)) return [];
 
   return notes
     .filter((note) => note && typeof note === "object")
-    .map((note) => {
-      const normalized = {
-        title: safeString(note.title),
-        content: safeString(note.content),
-        category: safeString(note.category || "none"),
-        pinned: Boolean(note.is_pinned || note.isPinned || note.pinned),
-        created_at: normalizeDate(note.created_at || note.createdAt),
-        updated_at: normalizeDate(note.updated_at || note.updatedAt),
-      };
-
-      const voice = getVoiceMetadata(note);
-      if (voice) {
-        normalized.voice_note = voice;
-      }
-
-      return normalized;
-    });
+    .map((note) => normalizeExportNote(note));
 }
 
 function formatDisplayDate(value) {
@@ -49,6 +52,16 @@ function formatDisplayDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return safeString(value);
   return date.toISOString().slice(0, 10);
+}
+
+function getSafeFilenamePart(value, fallback) {
+  const safeValue = safeString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return safeValue || fallback;
 }
 
 export function formatNotesAsTxt(notes) {
@@ -86,9 +99,46 @@ export function formatNotesAsJson(notes) {
   return JSON.stringify(normalizeExportNotes(notes), null, 2);
 }
 
+export function formatNoteAsTxt(note) {
+  const normalized = normalizeExportNote(note);
+  const lines = [
+    `Title: ${normalized.title || "Untitled"}`,
+    `Category: ${normalized.category || "none"}`,
+    `Created: ${formatDisplayDate(normalized.created_at)}`,
+    "",
+    "Content:",
+    "",
+    normalized.content || "",
+  ];
+
+  if (normalized.voice_note) {
+    lines.push(
+      "",
+      "Voice Note: Metadata only (raw audio not exported)",
+      `Voice Duration: ${normalized.voice_note.duration ?? "Not available"}`,
+      `Voice Audio URL: ${normalized.voice_note.audio_url || "Not available"}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+export function formatNoteAsJson(note) {
+  return JSON.stringify(normalizeExportNote(note), null, 2);
+}
+
 export function getExportFilename(format) {
   const date = new Date().toISOString().slice(0, 10);
   return `keeper-notes-${date}.${format}`;
+}
+
+export function getNoteExportFilename(note, format) {
+  const date = new Date().toISOString().slice(0, 10);
+  const normalized = normalizeExportNote(note);
+  const title = getSafeFilenamePart(normalized.title, "untitled-note");
+  const extension = getSafeFilenamePart(format, "txt");
+
+  return `keeper-note-${title}-${date}.${extension}`;
 }
 
 export function downloadTextFile({ content, filename, mimeType }) {
