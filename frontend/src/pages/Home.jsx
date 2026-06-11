@@ -626,7 +626,17 @@ function Home({ user, isLoggedIn, onLogout }) {
     if (isLoggedIn) {
       try {
         const res = await togglePinNote(id);
-        setNotes((prev) => prev.map((n) => (n.id === id ? res.data : n)));
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === id
+              ? {
+                  ...n,
+                  ...res.data,
+                  voice_note: res.data.voice_note ?? n.voice_note,
+                }
+              : n,
+          ),
+        );
         toast.success(
           res.data.is_pinned ? "Note pinned! 📌" : "Note unpinned!",
         );
