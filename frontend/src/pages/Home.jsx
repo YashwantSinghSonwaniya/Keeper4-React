@@ -44,6 +44,15 @@ import SortableNote from "../components/SortableNote";
 import GuestImportModal from "../components/GuestImportModal";
 
 import CATEGORIES from "../categories";
+import {
+  downloadBlobFile,
+  downloadTextFile,
+  formatNotesAsJson,
+  formatNotesAsPdf,
+  formatNotesAsTxt,
+  getExportFilename,
+  normalizeExportNotes,
+} from "../exportNotes";
 
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
@@ -96,6 +105,7 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
+  const [openExportNoteId, setOpenExportNoteId] = useState(null);
   const speechReader = useSpeechReader();
 
   function getGuestPromptUserKey() {
@@ -387,6 +397,66 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalVoiceDeleted(false);
     setModalRecorderKey((prev) => prev + 1);
     setModalOpen(true);
+  }
+
+  function getNoteByActionId(id) {
+    if (isLoggedIn) {
+      return notes.find((n) => n.id === id);
+    }
+
+    // Guest IDs are prefixed like "pinned-5" or "unpinned-3".
+    const globalIndex = parseInt(String(id).split("-")[1], 10);
+    return notes[globalIndex];
+  }
+
+  function toggleExportDropdown(id) {
+    setOpenExportNoteId((currentId) => (currentId === id ? null : id));
+  }
+
+  function closeExportDropdown(id) {
+    setOpenExportNoteId((currentId) => (currentId === id ? null : currentId));
+  }
+
+  function handleExportNote(id, format) {
+    const note = getNoteByActionId(id);
+
+    if (!note) {
+      toast.error("Unable to find that note for export.");
+      return;
+    }
+
+    const sourceNotes = [note];
+    const normalizedNotes = normalizeExportNotes(sourceNotes);
+
+    if (normalizedNotes.length === 0) {
+      toast.error("No note data available to export.");
+      return;
+    }
+
+    try {
+      if (format === "pdf") {
+        downloadBlobFile({
+          blob: formatNotesAsPdf(sourceNotes),
+          filename: getExportFilename(format),
+        });
+      } else {
+        const isJson = format === "json";
+        downloadTextFile({
+          content: isJson
+            ? formatNotesAsJson(sourceNotes)
+            : formatNotesAsTxt(sourceNotes),
+          filename: getExportFilename(format),
+          mimeType: isJson
+            ? "application/json;charset=utf-8"
+            : "text/plain;charset=utf-8",
+        });
+      }
+
+      toast.success(`Exported note as ${format.toUpperCase()}.`);
+    } catch (err) {
+      console.error("Export note failed:", err);
+      toast.error("Failed to export note.");
+    }
   }
 
   function handleModalRecordingComplete(recording) {
@@ -697,6 +767,10 @@ function Home({ user, isLoggedIn, onLogout }) {
           onPin={togglePin}
           onCategoryChange={changeCategory}
           onReadAloud={handleReadAloud}
+          onExport={handleExportNote}
+          exportDropdownOpen={openExportNoteId === id}
+          onToggleExportDropdown={toggleExportDropdown}
+          onCloseExportDropdown={closeExportDropdown}
           speechState={speechReader.getNoteSpeechState(id)}
         />
       );
@@ -719,6 +793,10 @@ function Home({ user, isLoggedIn, onLogout }) {
         onPin={togglePin}
         onCategoryChange={changeCategory}
         onReadAloud={handleReadAloud}
+        onExport={handleExportNote}
+        exportDropdownOpen={openExportNoteId === id}
+        onToggleExportDropdown={toggleExportDropdown}
+        onCloseExportDropdown={closeExportDropdown}
         speechState={speechReader.getNoteSpeechState(id)}
       />
     );

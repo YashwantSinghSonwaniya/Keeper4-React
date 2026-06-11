@@ -2472,3 +2472,91 @@ button:disabled {
     width: 100%;
   }
 }
+
+/* ======= NOTE OVERFLOW MENU ======= */
+.note-overflow-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.note-overflow-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 168px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  z-index: 10000;
+}
+
+.note-overflow-menu-dark {
+  background: #2f2f2f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.note-actions .note-overflow-menu button,
+.note-actions .note-export-options button {
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+  justify-content: flex-start;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #333;
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 600;
+  gap: 10px;
+}
+
+.note-actions .note-overflow-menu-dark button,
+.note-actions .note-overflow-menu-dark .note-export-options button {
+  color: #f5f5f5;
+}
+
+.note-actions .note-overflow-menu button:hover,
+.note-actions .note-export-options button:hover {
+  transform: none;
+}
+
+.note-overflow-item-with-caret {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;
+}
+
+.note-overflow-caret {
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.note-export-options {
+  margin: 2px 0 4px 28px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(245, 186, 19, 0.35);
+}
+
+.note-actions .note-export-options button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .note-actions {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .note-actions {
+    gap: 2px;
+  }
+
+  .note-overflow-menu {
+    right: -40px;
+    min-width: 156px;
+  }
+}

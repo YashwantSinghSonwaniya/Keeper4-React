@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import CATEGORIES from "../categories";
 import VoiceNotePlayer from "./VoiceNotePlayer";
 
@@ -18,6 +18,8 @@ const NOTE_COLORS = [
 function Note(props) {
   const [showPalette, setShowPalette] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [localOverflowOpen, setLocalOverflowOpen] = useState(false);
+  const [showExportOptions, setShowExportOptions] = useState(false);
   const [palettePos, setPalettePos] = useState({ top: 0, left: 0 });
   const [categoryPos, setCategoryPos] = useState({ top: 0, left: 0 });
 
@@ -25,14 +27,22 @@ function Note(props) {
   const paletteBtnRef = useRef(null);
   const categoryRef = useRef(null);
   const categoryBtnRef = useRef(null);
+  const exportRef = useRef(null);
+  const exportBtnRef = useRef(null);
 
+  const { id, onCloseExportDropdown } = props;
   const isDark = props.color === "#232323";
+  const isOverflowControlled = props.exportDropdownOpen !== undefined;
+  const overflowMenuOpen = isOverflowControlled
+    ? props.exportDropdownOpen
+    : localOverflowOpen;
   const speechState = props.speechState || {};
   const isSpeechActive = Boolean(speechState.isActive);
   const isSpeechReading = Boolean(speechState.isReading);
 
   function handleReadClick(e) {
     e.stopPropagation();
+    closeOverflowMenu();
     if (props.onReadAloud) {
       props.onReadAloud(props.id, {
         title: props.title,
@@ -45,30 +55,93 @@ function Note(props) {
     (c) => c.id === (props.category || "none")
   );
 
+  const closeOverflowMenu = useCallback(() => {
+    setShowExportOptions(false);
+
+    if (isOverflowControlled) {
+      if (onCloseExportDropdown) onCloseExportDropdown(id);
+      return;
+    }
+
+    setLocalOverflowOpen(false);
+  }, [id, isOverflowControlled, onCloseExportDropdown]);
+
+  function handleOverflowToggle(e) {
+    e.stopPropagation();
+    setShowPalette(false);
+    setShowCategoryPicker(false);
+
+    if (props.onToggleExportDropdown) {
+      if (overflowMenuOpen) setShowExportOptions(false);
+      props.onToggleExportDropdown(props.id);
+    } else {
+      setLocalOverflowOpen((prev) => {
+        if (prev) setShowExportOptions(false);
+        return !prev;
+      });
+    }
+  }
+
+  function handleExportOptionsToggle(e) {
+    e.stopPropagation();
+    setShowExportOptions((prev) => !prev);
+  }
+
+  function handleExport(format) {
+    if (props.onExport) {
+      props.onExport(props.id, format);
+    }
+    closeOverflowMenu();
+  }
+
+  function handleEditClick(e) {
+    e.stopPropagation();
+    closeOverflowMenu();
+    props.onEdit(props.id);
+  }
+
+  function handleDeleteClick(e) {
+    e.stopPropagation();
+    closeOverflowMenu();
+    props.onDelete(props.id);
+  }
+
+  useEffect(() => {
+    if (!overflowMenuOpen) setShowExportOptions(false);
+  }, [overflowMenuOpen]);
+
   // Close palettes on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (
         paletteRef.current &&
         !paletteRef.current.contains(e.target) &&
-        paletteBtnRef.current &&
-        !paletteBtnRef.current.contains(e.target)
+        (!paletteBtnRef.current ||
+          !paletteBtnRef.current.contains(e.target))
       ) {
         setShowPalette(false);
       }
       if (
         categoryRef.current &&
         !categoryRef.current.contains(e.target) &&
-        categoryBtnRef.current &&
-        !categoryBtnRef.current.contains(e.target)
+        (!categoryBtnRef.current ||
+          !categoryBtnRef.current.contains(e.target))
       ) {
         setShowCategoryPicker(false);
+      }
+      if (
+        exportRef.current &&
+        !exportRef.current.contains(e.target) &&
+        exportBtnRef.current &&
+        !exportBtnRef.current.contains(e.target)
+      ) {
+        closeOverflowMenu();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () =>
       document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [closeOverflowMenu]);
 
   function handlePaletteToggle() {
     if (!showPalette && paletteBtnRef.current) {
@@ -91,6 +164,7 @@ function Note(props) {
     }
     setShowPalette((prev) => !prev);
     setShowCategoryPicker(false);
+    closeOverflowMenu();
   }
 
   function handleCategoryToggle() {
@@ -112,6 +186,7 @@ function Note(props) {
     }
     setShowCategoryPicker((prev) => !prev);
     setShowPalette(false);
+    closeOverflowMenu();
   }
 
   return (
@@ -240,38 +315,105 @@ function Note(props) {
           <span className="read-aloud-label">{speechState.label || "Read"}</span>
         </button>
 
-        {/* Color */}
-        <button
-          ref={paletteBtnRef}
-          onClick={handlePaletteToggle}
-          title="Change color"
-          style={{ color: isDark ? "#ccc" : "#f5ba13" }}
-        >
-          <span className="material-icons">palette</span>
-        </button>
+        {/* More actions */}
+        <div className="note-overflow-wrapper">
+          <button
+            ref={exportBtnRef}
+            className="note-overflow-btn"
+            onClick={handleOverflowToggle}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            title="More actions"
+            aria-label="More note actions"
+            aria-expanded={overflowMenuOpen}
+            aria-haspopup="menu"
+            style={{ color: isDark ? "#ccc" : "#5f6368" }}
+          >
+            <span className="material-icons">more_vert</span>
+          </button>
 
-        {/* Category */}
-        <button
-          ref={categoryBtnRef}
-          onClick={handleCategoryToggle}
-          title="Set category"
-          style={{ color: isDark ? "#ccc" : "#9c27b0" }}
-        >
-          <span className="material-icons">label</span>
-        </button>
+          {overflowMenuOpen && (
+            <div
+              className={`note-overflow-menu ${isDark ? "note-overflow-menu-dark" : ""}`}
+              ref={exportRef}
+              role="menu"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="note-overflow-item"
+                role="menuitem"
+                onClick={handleEditClick}
+              >
+                <span className="material-icons">edit</span>
+                <span>Edit</span>
+              </button>
 
-        {/* Edit */}
-        <button
-          onClick={() => props.onEdit(props.id)}
-          title="Edit note"
-          style={{ color: isDark ? "#82b4ff" : "#1976d2" }}
-        >
-          <span className="material-icons">edit</span>
-        </button>
+              <button
+                ref={paletteBtnRef}
+                type="button"
+                className="note-overflow-item"
+                role="menuitem"
+                onClick={handlePaletteToggle}
+              >
+                <span className="material-icons">palette</span>
+                <span>Color</span>
+              </button>
+
+              <button
+                ref={categoryBtnRef}
+                type="button"
+                className="note-overflow-item"
+                role="menuitem"
+                onClick={handleCategoryToggle}
+              >
+                <span className="material-icons">label</span>
+                <span>Category</span>
+              </button>
+
+              <div className="note-overflow-export-group">
+                <button
+                  type="button"
+                  className="note-overflow-item note-overflow-item-with-caret"
+                  role="menuitem"
+                  onClick={handleExportOptionsToggle}
+                  aria-haspopup="menu"
+                >
+                  <span className="material-icons">file_download</span>
+                  <span>Export</span>
+                  <span className="note-overflow-caret" aria-hidden="true">
+                    {showExportOptions ? "▾" : "▸"}
+                  </span>
+                </button>
+
+                {showExportOptions && (
+                  <div className="note-export-options" role="menu">
+                    {["pdf", "txt", "json"].map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        role="menuitem"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExport(format);
+                        }}
+                      >
+                        {format.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Delete */}
         <button
-          onClick={() => props.onDelete(props.id)}
+          onClick={handleDeleteClick}
           title="Delete note"
           style={{ color: isDark ? "#ff8a80" : "#d32f2f" }}
         >
