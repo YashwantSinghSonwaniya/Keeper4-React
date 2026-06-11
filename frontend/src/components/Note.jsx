@@ -18,13 +18,17 @@ const NOTE_COLORS = [
 function Note(props) {
   const [showPalette, setShowPalette] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [palettePos, setPalettePos] = useState({ top: 0, left: 0 });
   const [categoryPos, setCategoryPos] = useState({ top: 0, left: 0 });
+  const [exportPos, setExportPos] = useState({ top: 0, left: 0 });
 
   const paletteRef = useRef(null);
   const paletteBtnRef = useRef(null);
   const categoryRef = useRef(null);
   const categoryBtnRef = useRef(null);
+  const exportRef = useRef(null);
+  const exportBtnRef = useRef(null);
 
   const isDark = props.color === "#232323";
   const speechState = props.speechState || {};
@@ -64,6 +68,14 @@ function Note(props) {
       ) {
         setShowCategoryPicker(false);
       }
+      if (
+        exportRef.current &&
+        !exportRef.current.contains(e.target) &&
+        exportBtnRef.current &&
+        !exportBtnRef.current.contains(e.target)
+      ) {
+        setShowExportMenu(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () =>
@@ -91,6 +103,7 @@ function Note(props) {
     }
     setShowPalette((prev) => !prev);
     setShowCategoryPicker(false);
+    setShowExportMenu(false);
   }
 
   function handleCategoryToggle() {
@@ -112,6 +125,42 @@ function Note(props) {
     }
     setShowCategoryPicker((prev) => !prev);
     setShowPalette(false);
+    setShowExportMenu(false);
+  }
+
+  function handleExportToggle() {
+    if (!showExportMenu && exportBtnRef.current) {
+      const rect = exportBtnRef.current.getBoundingClientRect();
+      const menuWidth = 150;
+      const menuHeight = 48;
+      const gap = 8;
+
+      let top = rect.top - menuHeight - gap;
+      let left = rect.left - menuWidth / 2;
+
+      if (top < 60) top = rect.bottom + gap;
+      if (left + menuWidth > window.innerWidth - gap) {
+        left = window.innerWidth - menuWidth - gap;
+      }
+      if (left < gap) left = gap;
+      if (top + menuHeight > window.innerHeight - gap) {
+        top = rect.top - menuHeight - gap;
+      }
+
+      setExportPos({ top, left });
+    }
+    setShowExportMenu((prev) => !prev);
+    setShowPalette(false);
+    setShowCategoryPicker(false);
+  }
+
+  function handlePdfExport(e) {
+    e.stopPropagation();
+    setShowExportMenu(false);
+
+    if (props.onExportPdf) {
+      props.onExportPdf(props.id);
+    }
   }
 
   return (
@@ -221,6 +270,19 @@ function Note(props) {
         </div>
       )}
 
+      {showExportMenu && (
+        <div
+          className={`note-export-menu ${isDark ? "note-export-menu-dark" : ""}`}
+          ref={exportRef}
+          style={{ top: exportPos.top, left: exportPos.left }}
+        >
+          <button type="button" onClick={handlePdfExport}>
+            <span className="material-icons">picture_as_pdf</span>
+            <span>Export PDF</span>
+          </button>
+        </div>
+      )}
+
       {/* Note actions */}
       <div className="note-actions">
         {/* Read aloud */}
@@ -258,6 +320,16 @@ function Note(props) {
           style={{ color: isDark ? "#ccc" : "#9c27b0" }}
         >
           <span className="material-icons">label</span>
+        </button>
+
+        {/* Export */}
+        <button
+          ref={exportBtnRef}
+          onClick={handleExportToggle}
+          title="Export note"
+          style={{ color: isDark ? "#ccc" : "#188038" }}
+        >
+          <span className="material-icons">file_download</span>
         </button>
 
         {/* Edit */}

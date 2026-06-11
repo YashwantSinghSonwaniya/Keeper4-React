@@ -37,6 +37,7 @@ function SortableNote(props) {
         onPin={props.onPin}
         onCategoryChange={props.onCategoryChange}
         onReadAloud={props.onReadAloud}
+        onExportPdf={props.onExportPdf}
         speechState={props.speechState}
       />
     </div>
