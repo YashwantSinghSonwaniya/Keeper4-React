@@ -4,15 +4,15 @@ import VoiceNotePlayer from "./VoiceNotePlayer";
 
 const NOTE_COLORS = [
   { name: "Default", hex: "#ffffff" },
-  { name: "Red",     hex: "#f28b82" },
-  { name: "Coral",   hex: "#ff8a65" },
-  { name: "Yellow",  hex: "#fff475" },
-  { name: "Green",   hex: "#ccff90" },
-  { name: "Teal",    hex: "#a7ffeb" },
-  { name: "Blue",    hex: "#cbf0f8" },
-  { name: "Purple",  hex: "#d7aefb" },
-  { name: "Pink",    hex: "#fdcfe8" },
-  { name: "Dark",    hex: "#232323" },
+  { name: "Red", hex: "#f28b82" },
+  { name: "Coral", hex: "#ff8a65" },
+  { name: "Yellow", hex: "#fff475" },
+  { name: "Green", hex: "#ccff90" },
+  { name: "Teal", hex: "#a7ffeb" },
+  { name: "Blue", hex: "#cbf0f8" },
+  { name: "Purple", hex: "#d7aefb" },
+  { name: "Pink", hex: "#fdcfe8" },
+  { name: "Dark", hex: "#232323" },
 ];
 
 function Note(props) {
@@ -20,11 +20,18 @@ function Note(props) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [palettePos, setPalettePos] = useState({ top: 0, left: 0 });
   const [categoryPos, setCategoryPos] = useState({ top: 0, left: 0 });
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportPos, setExportPos] = useState({ top: 0, left: 0 });
 
   const paletteRef = useRef(null);
   const paletteBtnRef = useRef(null);
   const categoryRef = useRef(null);
   const categoryBtnRef = useRef(null);
+  const exportRef = useRef(null);
+  const exportBtnRef = useRef(null);
+
+  const exportOptionRefs = useRef([]);
+  const { id, onExportToggle } = props;
 
   const isDark = props.color === "#232323";
   const speechState = props.speechState || {};
@@ -41,11 +48,75 @@ function Note(props) {
     }
   }
 
+  function closeExportMenu() {
+    setShowExportMenu(false);
+    if (onExportToggle) {
+      onExportToggle(id, false);
+    }
+  }
+
+  function positionExportMenu() {
+    if (!exportBtnRef.current) return;
+
+    const rect = exportBtnRef.current.getBoundingClientRect();
+    const menuWidth = 132;
+    const menuHeight = 132;
+    const gap = 8;
+
+    let top = rect.top - menuHeight - gap;
+    let left = rect.left - menuWidth / 2 + rect.width / 2;
+
+    if (top < 60) top = rect.bottom + gap;
+    if (left + menuWidth > window.innerWidth - gap) {
+      left = window.innerWidth - menuWidth - gap;
+    }
+    if (left < gap) left = gap;
+    if (top + menuHeight > window.innerHeight - gap) {
+      top = Math.max(gap, rect.top - menuHeight - gap);
+    }
+
+    setExportPos({ top, left });
+  }
+
+  function handleExportToggle(e) {
+    e.stopPropagation();
+    const nextOpen = !showExportMenu;
+
+    if (nextOpen) {
+      positionExportMenu();
+    }
+
+    setShowExportMenu(nextOpen);
+    if (onExportToggle) {
+      onExportToggle(id, nextOpen);
+    }
+    setShowPalette(false);
+    setShowCategoryPicker(false);
+  }
+
+  function handleExportSelect(format) {
+    if (props.onExport) {
+      props.onExport(
+        id,
+        format,
+        props.note || {
+          title: props.title,
+          content: props.content,
+          color: props.color,
+          category: props.category,
+          isPinned: props.isPinned,
+          voice_note: props.voiceNote,
+        },
+      );
+    }
+    closeExportMenu();
+  }
+
   const currentCategory = CATEGORIES.find(
-    (c) => c.id === (props.category || "none")
+    (c) => c.id === (props.category || "none"),
   );
 
-  // Close palettes on outside click
+  // Close popovers on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (
@@ -64,11 +135,58 @@ function Note(props) {
       ) {
         setShowCategoryPicker(false);
       }
+      if (
+        exportRef.current &&
+        !exportRef.current.contains(e.target) &&
+        exportBtnRef.current &&
+        !exportBtnRef.current.contains(e.target)
+      ) {
+        closeExportMenu();
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
-    return () =>
-      document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  });
+
+  useEffect(() => {
+    const shouldShow = Boolean(props.isExportOpen);
+    setShowExportMenu(shouldShow);
+
+    if (shouldShow) {
+      positionExportMenu();
+      setShowPalette(false);
+      setShowCategoryPicker(false);
+    }
+  }, [props.isExportOpen]);
+
+  useEffect(() => {
+    if (!showExportMenu) return undefined;
+
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        setShowExportMenu(false);
+        if (onExportToggle) {
+          onExportToggle(id, false);
+        }
+        if (exportBtnRef.current) exportBtnRef.current.focus();
+        return;
+      }
+
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+
+      e.preventDefault();
+      const options = exportOptionRefs.current.filter(Boolean);
+      const currentIndex = options.indexOf(document.activeElement);
+      const nextIndex =
+        e.key === "ArrowDown"
+          ? (currentIndex + 1) % options.length
+          : (currentIndex - 1 + options.length) % options.length;
+      if (options[nextIndex]) options[nextIndex].focus();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showExportMenu, onExportToggle, id]);
 
   function handlePaletteToggle() {
     if (!showPalette && paletteBtnRef.current) {
@@ -91,6 +209,7 @@ function Note(props) {
     }
     setShowPalette((prev) => !prev);
     setShowCategoryPicker(false);
+    closeExportMenu();
   }
 
   function handleCategoryToggle() {
@@ -112,6 +231,7 @@ function Note(props) {
     }
     setShowCategoryPicker((prev) => !prev);
     setShowPalette(false);
+    closeExportMenu();
   }
 
   return (
@@ -125,9 +245,7 @@ function Note(props) {
         onClick={() => props.onPin(props.id)}
         title={props.isPinned ? "Unpin note" : "Pin note"}
         style={{
-          color: props.isPinned
-            ? "#f5ba13"
-            : isDark ? "#888" : "#ccc",
+          color: props.isPinned ? "#f5ba13" : isDark ? "#888" : "#ccc",
         }}
       >
         <span className="material-icons">push_pin</span>
@@ -188,6 +306,43 @@ function Note(props) {
         </div>
       )}
 
+      {/* Export dropdown */}
+      {showExportMenu && (
+        <div
+          className="export-note-menu"
+          ref={exportRef}
+          role="menu"
+          aria-label="Export note"
+          style={{ top: exportPos.top, left: exportPos.left }}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          {[
+            { format: "pdf", label: "PDF", icon: "picture_as_pdf" },
+            { format: "txt", label: "TXT", icon: "description" },
+            { format: "json", label: "JSON", icon: "data_object" },
+          ].map((option, index) => (
+            <button
+              key={option.format}
+              ref={(el) => {
+                exportOptionRefs.current[index] = el;
+              }}
+              type="button"
+              className="export-note-option"
+              role="menuitem"
+              onClick={() => handleExportSelect(option.format)}
+            >
+              <span className="material-icons" aria-hidden="true">
+                {option.icon}
+              </span>
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Category badge — shows current category */}
       {props.category && props.category !== "none" && (
         <div
@@ -199,21 +354,16 @@ function Note(props) {
         </div>
       )}
 
-      <h1 style={{ color: isDark ? "#fff" : "#333" }}>
-        {props.title}
-      </h1>
+      <h1 style={{ color: isDark ? "#fff" : "#333" }}>{props.title}</h1>
 
-      <p style={{ color: isDark ? "#ccc" : "#555" }}>
-        {props.content}
-      </p>
+      <p style={{ color: isDark ? "#ccc" : "#555" }}>{props.content}</p>
 
-      <VoiceNotePlayer
-        voiceNote={props.voiceNote}
-        isDark={isDark}
-      />
+      <VoiceNotePlayer voiceNote={props.voiceNote} isDark={isDark} />
 
       {isSpeechActive && (
-        <div className={`reading-indicator ${isDark ? "reading-indicator-dark" : ""}`}>
+        <div
+          className={`reading-indicator ${isDark ? "reading-indicator-dark" : ""}`}
+        >
           <span className="speaker-pulse" aria-hidden="true">
             🔊
           </span>
@@ -232,12 +382,36 @@ function Note(props) {
           onTouchStart={(e) => e.stopPropagation()}
           title="Read aloud"
           aria-label={`${speechState.label || "Read"} note aloud`}
-          style={{ color: isSpeechActive ? "#f5ba13" : isDark ? "#ccc" : "#5f6368" }}
+          style={{
+            color: isSpeechActive ? "#f5ba13" : isDark ? "#ccc" : "#5f6368",
+          }}
         >
           <span className="read-aloud-icon" aria-hidden="true">
             {speechState.icon || "🔊"}
           </span>
-          <span className="read-aloud-label">{speechState.label || "Read"}</span>
+          <span className="read-aloud-label">
+            {speechState.label || "Read"}
+          </span>
+        </button>
+
+        {/* Export */}
+        <button
+          ref={exportBtnRef}
+          type="button"
+          className={`export-note-btn ${showExportMenu ? "export-note-btn-active" : ""}`}
+          onClick={handleExportToggle}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          title="Export note"
+          aria-label="Export note"
+          aria-haspopup="menu"
+          aria-expanded={showExportMenu}
+          style={{
+            color: showExportMenu ? "#f5ba13" : isDark ? "#ccc" : "#5f6368",
+          }}
+        >
+          <span className="material-icons">ios_share</span>
         </button>
 
         {/* Color */}

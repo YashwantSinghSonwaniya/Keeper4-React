@@ -44,6 +44,14 @@ import SortableNote from "../components/SortableNote";
 import GuestImportModal from "../components/GuestImportModal";
 
 import CATEGORIES from "../categories";
+import {
+  downloadTextFile,
+  formatNotesAsJson,
+  formatNotesAsPdf,
+  formatNotesAsTxt,
+  getNoteExportFilename,
+  normalizeExportNotes,
+} from "../exportNotes";
 
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
@@ -96,6 +104,7 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
+  const [openExportNoteId, setOpenExportNoteId] = useState(null);
   const speechReader = useSpeechReader();
 
   function getGuestPromptUserKey() {
@@ -660,6 +669,42 @@ function Home({ user, isLoggedIn, onLogout }) {
     speechReader.toggleNote(id, note);
   }
 
+  function handleExportToggle(id, shouldOpen) {
+    setOpenExportNoteId(shouldOpen ? id : null);
+  }
+
+  function handleExportNote(id, format, noteData) {
+    if (!id) return;
+
+    const normalizedNotes = normalizeExportNotes([noteData]);
+
+    if (normalizedNotes.length === 0) {
+      toast.error("No note available to export.");
+      return;
+    }
+
+    const isJson = format === "json";
+    const isPdf = format === "pdf";
+    const content = isJson
+      ? formatNotesAsJson([noteData])
+      : isPdf
+        ? formatNotesAsPdf([noteData])
+        : formatNotesAsTxt([noteData]);
+
+    downloadTextFile({
+      content,
+      filename: getNoteExportFilename(noteData, format),
+      mimeType: isJson
+        ? "application/json;charset=utf-8"
+        : isPdf
+          ? "application/pdf"
+          : "text/plain;charset=utf-8",
+    });
+
+    setOpenExportNoteId(null);
+    toast.success(`Exported note as ${format.toUpperCase()}.`);
+  }
+
   function handleModalReadAloud() {
     if (!modalNoteId) return;
     speechReader.toggleNote(`modal-${modalNoteId}`, modalNote);
@@ -687,6 +732,10 @@ function Home({ user, isLoggedIn, onLogout }) {
           isPinned={isPinned}
           category={noteItem.category || "none"}
           voiceNote={noteItem.voice_note}
+          note={noteItem}
+          onExport={handleExportNote}
+          isExportOpen={openExportNoteId === id}
+          onExportToggle={handleExportToggle}
           onDelete={confirmDelete}
           onEdit={editNoteHandler}
           onColorChange={changeNoteColor}
@@ -709,6 +758,10 @@ function Home({ user, isLoggedIn, onLogout }) {
         isPinned={isPinned}
         category={noteItem.category || "none"}
         voiceNote={noteItem.voice_note}
+        note={noteItem}
+        onExport={handleExportNote}
+        isExportOpen={openExportNoteId === id}
+        onExportToggle={handleExportToggle}
         onDelete={confirmDelete}
         onEdit={editNoteHandler}
         onColorChange={changeNoteColor}
