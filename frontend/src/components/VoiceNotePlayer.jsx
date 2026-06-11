@@ -1,6 +1,7 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { resolveMediaUrl } from "../api";
+import { useAudioCoordinator } from "../context/AudioContext";
 
 function formatTime(milliseconds) {
   const totalSeconds = Math.floor(milliseconds / 1000);
@@ -19,6 +20,36 @@ function VoiceNotePlayer({ voiceNote, isDark }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(voiceNote?.duration || 0);
   const [error, setError] = useState("");
+
+  const {
+    registerVoiceNote,
+    requestVoiceNotePlay,
+    notifyVoiceNoteStopped,
+  } = useAudioCoordinator();
+
+  // Stable unique ID for this player instance.
+  // Use the voice note's own id if available; fall back to audio_url.
+  const playerIdRef = useRef(
+    voiceNote?.id
+      ? String(voiceNote.id)
+      : voiceNote?.audio_url || Math.random().toString(36).slice(2)
+  );
+  const playerId = playerIdRef.current;
+
+  // Register this player with the global coordinator on mount.
+  // The coordinator calls our stop function when another source requests play.
+  useEffect(() => {
+    const stopFn = () => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused) {
+        audio.pause();
+        // setIsPlaying is handled by the "onPause" event handler below
+      }
+    };
+
+    const unregister = registerVoiceNote(playerId, stopFn);
+    return unregister;
+  }, [playerId, registerVoiceNote]);
 
   if (!voiceNote?.audio_url) {
     return null;
@@ -39,18 +70,24 @@ function VoiceNotePlayer({ voiceNote, isDark }) {
     if (!audio) return;
 
     if (isPlaying) {
+      // User manually pausing — no need to notify coordinator, onPause handles UI
       audio.pause();
-      setIsPlaying(false);
       return;
     }
 
+    // ── Request permission from the global coordinator ──────────────────────
+    // This stops TTS and any other playing voice note BEFORE we start.
+    requestVoiceNotePlay(playerId);
+    // ───────────────────────────────────────────────────────────────────────
+
     try {
       await audio.play();
-      setIsPlaying(true);
+      // setIsPlaying is handled by the "onPlay" event below
     } catch (err) {
       console.error("Voice playback error:", err);
       setError("Could not play audio.");
       toast.error("Could not play voice note.");
+      notifyVoiceNoteStopped(playerId);
     }
   }
 
@@ -83,11 +120,24 @@ function VoiceNotePlayer({ voiceNote, isDark }) {
   function handleEnded() {
     setIsPlaying(false);
     setCurrentTime(0);
+    notifyVoiceNoteStopped(playerId);
   }
 
   function handleError() {
     setIsLoading(false);
     setError("Audio unavailable.");
+    notifyVoiceNoteStopped(playerId);
+  }
+
+  function handlePlay() {
+    setIsPlaying(true);
+  }
+
+  function handlePause() {
+    setIsPlaying(false);
+    // Don't call notifyVoiceNoteStopped on pause —
+    // the user may resume, and we want the coordinator to still know this
+    // player is "the active one" so it gets stopped if something else starts.
   }
 
   return (
@@ -105,8 +155,8 @@ function VoiceNotePlayer({ voiceNote, isDark }) {
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onPause={() => setIsPlaying(false)}
-        onPlay={() => setIsPlaying(true)}
+        onPause={handlePause}
+        onPlay={handlePlay}
         onError={handleError}
       />
 

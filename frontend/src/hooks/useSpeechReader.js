@@ -4,10 +4,9 @@ import {
   DEFAULT_SPEECH_SETTINGS,
   loadSpeechSettings,
 } from "../speechSettings";
+import { useAudioCoordinator } from "../context/AudioContext";
 
 // ─── Debug flag ──────────────────────────────────────────────────────────────
-// Set to true during development to see voice diagnostics in the console.
-// Remove or set to false before production build.
 const DEBUG_SPEECH = process.env.NODE_ENV === "development";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -41,30 +40,13 @@ function getSpeechErrorMessage(event) {
   return "Speech reading stopped unexpectedly.";
 }
 
-// ─── Phase 1: Smart voice picker ─────────────────────────────────────────────
-//
-// Priority order (highest quality to lowest):
-//   1. Google voices with en-US  — best quality on Chrome/Android
-//   2. Microsoft Neural voices   — best quality on Edge/Windows
-//   3. Well-known natural voices — Samantha (macOS), Karen (iOS),
-//                                  Daniel (UK), Moira (Irish)
-//   4. Any en-US voice           — any local US English
-//   5. Any English voice         — fallback to any English
-//   6. null                      — let the browser decide (current behaviour)
-//
-// Only used when voiceURI is "" (the default / "Browser default" option).
-// Any explicit user selection in Settings bypasses this entirely.
-//
+// ─── Smart voice picker ───────────────────────────────────────────────────────
 function pickBestVoice(voices, preferredURI) {
-  // 1. User has explicitly chosen a voice in Settings — always honour it
   if (preferredURI) {
     const exact = voices.find((v) => v.voiceURI === preferredURI);
     if (exact) return exact;
-    // voiceURI saved but no longer available (e.g. different browser/OS)
-    // fall through to auto-pick rather than silently using browser default
   }
 
-  // 2. Auto-pick the highest-quality English voice available
   const tests = [
     (v) => /google/i.test(v.name) && /en[-_]US/i.test(v.lang),
     (v) => /microsoft/i.test(v.name) && /neural/i.test(v.name) && /en/i.test(v.lang),
@@ -78,7 +60,7 @@ function pickBestVoice(voices, preferredURI) {
     if (found) return found;
   }
 
-  return null; // let the browser decide — same as before Phase 1
+  return null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -95,6 +77,10 @@ function useSpeechReader() {
   const activeIdRef = useRef(null);
   const manuallyStoppedRef = useRef(false);
   const noVoicesNoticeShownRef = useRef(false);
+
+  // ── Global audio coordinator ───────────────────────────────────────────────
+  const { requestSpeechPlay, notifySpeechStopped } = useAudioCoordinator();
+  // ──────────────────────────────────────────────────────────────────────────
 
   const reloadVoices = useCallback(() => {
     if (!isSpeechSupported()) return [];
@@ -140,12 +126,21 @@ function useSpeechReader() {
     };
   }, [supported]);
 
-  const resetState = useCallback(() => {
-    utteranceRef.current = null;
-    activeIdRef.current = null;
-    setActiveId(null);
-    setStatus("idle");
-  }, []);
+  const resetState = useCallback(
+    (speechId) => {
+      // Only notify if this is the currently active speech id,
+      // to avoid a stale closure calling notifySpeechStopped for a previous read.
+      const idToNotify = speechId ?? activeIdRef.current;
+      utteranceRef.current = null;
+      activeIdRef.current = null;
+      setActiveId(null);
+      setStatus("idle");
+      if (idToNotify) {
+        notifySpeechStopped(idToNotify);
+      }
+    },
+    [notifySpeechStopped],
+  );
 
   const stop = useCallback(() => {
     if (!isSpeechSupported()) {
@@ -179,6 +174,10 @@ function useSpeechReader() {
         return false;
       }
 
+      // ── Tell coordinator: I'm about to speak — stop all voice notes ────────
+      requestSpeechPlay(noteId);
+      // ───────────────────────────────────────────────────────────────────────
+
       manuallyStoppedRef.current = true;
       window.speechSynthesis.cancel();
       manuallyStoppedRef.current = false;
@@ -189,9 +188,7 @@ function useSpeechReader() {
       const utterance = new window.SpeechSynthesisUtterance(text);
       const latestVoices = reloadVoices();
 
-      // ── Phase 1: use smart picker instead of exact-match-only ──────────────
       const selectedVoice = pickBestVoice(latestVoices, latestSettings.voiceURI);
-      // ───────────────────────────────────────────────────────────────────────
 
       if (latestVoices.length === 0 && !noVoicesNoticeShownRef.current) {
         toast("No browser voices found. Using the default voice.");
@@ -204,7 +201,6 @@ function useSpeechReader() {
       utterance.rate = latestSettings.rate;
       utterance.pitch = latestSettings.pitch;
 
-      // ── Phase 1: debug diagnostics (dev only) ──────────────────────────────
       if (DEBUG_SPEECH) {
         console.group("[SpeechReader] Starting utterance");
         console.log("Voice selected :", selectedVoice ? selectedVoice.name : "browser default");
@@ -217,7 +213,6 @@ function useSpeechReader() {
         console.log("User pref URI  :", latestSettings.voiceURI || "(none — auto)");
         console.groupEnd();
       }
-      // ───────────────────────────────────────────────────────────────────────
 
       utteranceRef.current = utterance;
       activeIdRef.current = noteId;
@@ -232,13 +227,13 @@ function useSpeechReader() {
 
       utterance.onend = () => {
         if (utteranceRef.current !== utterance) return;
-        resetState();
+        resetState(noteId);
       };
 
       utterance.onerror = (event) => {
         if (utteranceRef.current !== utterance) return;
         const wasManualStop = manuallyStoppedRef.current;
-        resetState();
+        resetState(noteId);
         if (!wasManualStop) {
           toast.error(getSpeechErrorMessage(event));
         }
@@ -249,12 +244,12 @@ function useSpeechReader() {
         return true;
       } catch (err) {
         console.error("Speech reading failed:", err);
-        resetState();
+        resetState(noteId);
         toast.error("Speech reading stopped unexpectedly.");
         return false;
       }
     },
-    [reloadVoices, resetState],
+    [reloadVoices, resetState, requestSpeechPlay],
   );
 
   const pause = useCallback(() => {

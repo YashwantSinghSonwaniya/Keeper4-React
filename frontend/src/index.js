@@ -2,11 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import { AudioProvider } from "./context/AudioContext";
 
 import App from "./components/App";
 // import "./../public/styles.css";
 
 ReactDOM.render(
+  <AudioProvider>
   <BrowserRouter>
     <App />
     <Toaster
@@ -28,6 +30,7 @@ ReactDOM.render(
         },
       }}
     />
-  </BrowserRouter>,
+  </BrowserRouter>
+  </AudioProvider>,
   document.getElementById("root")
 );
