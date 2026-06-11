@@ -2428,3 +2428,47 @@ button:disabled {
     flex-direction: column;
   }
 }
+
+/* ======= EXPORT NOTES ======= */
+.export-notes-item {
+  gap: 14px;
+}
+
+.export-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 135px;
+  padding: 10px 14px;
+}
+
+.export-btn .material-icons {
+  font-size: 18px;
+}
+
+.export-btn-secondary {
+  background: #fff7df;
+  color: #a36e00;
+  border: 1px solid rgba(245, 186, 19, 0.45);
+}
+
+.export-helper-text {
+  margin-top: -4px;
+}
+
+@media (max-width: 480px) {
+  .export-actions {
+    flex-direction: column;
+  }
+
+  .export-btn {
+    width: 100%;
+  }
+}
