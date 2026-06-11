@@ -8,11 +8,19 @@ import {
   deleteAccount,
   updateProfile,
   importNotes,
+  getNotes,
 } from "../api";
 import {
   loadSpeechSettings,
   saveSpeechSettings,
 } from "../speechSettings";
+import {
+  downloadTextFile,
+  formatNotesAsJson,
+  formatNotesAsTxt,
+  getExportFilename,
+  normalizeExportNotes,
+} from "../exportNotes";
 
 function Settings({ user, isLoggedIn, onLogout }) {
   const history = useHistory();
@@ -37,6 +45,7 @@ function Settings({ user, isLoggedIn, onLogout }) {
   const [guestNotesCount, setGuestNotesCount] = useState(0);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   function getGuestPromptUserKey() {
     if (!user) return null;
@@ -60,16 +69,23 @@ function Settings({ user, isLoggedIn, onLogout }) {
     return `lastGuestImportPrompt_${userKey}`;
   }
 
-  function getGuestNotesCount() {
+  function getGuestNotesFromStorage() {
     const saved = localStorage.getItem("notes_guest");
-    if (!saved) return 0;
+    if (!saved) return [];
+
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.length : 0;
+      return Array.isArray(parsed)
+        ? parsed.filter((item) => item && typeof item === "object")
+        : [];
     } catch (err) {
       console.error("Could not parse guest notes:", err);
-      return 0;
+      return [];
     }
+  }
+
+  function getGuestNotesCount() {
+    return getGuestNotesFromStorage().length;
   }
 
   function refreshGuestNotesCount() {
@@ -120,6 +136,44 @@ function Settings({ user, isLoggedIn, onLogout }) {
       [name]: name === "voiceURI" ? value : Number(value),
     });
     setSpeechSettings(nextSettings);
+  }
+
+  async function handleExportNotes(format) {
+    setExportLoading(true);
+
+    try {
+      const sourceNotes = isLoggedIn
+        ? (await getNotes()).data
+        : getGuestNotesFromStorage();
+      const normalizedNotes = normalizeExportNotes(sourceNotes);
+
+      if (normalizedNotes.length === 0) {
+        toast.error("No notes available to export.");
+        return;
+      }
+
+      const isJson = format === "json";
+      const content = isJson
+        ? formatNotesAsJson(sourceNotes)
+        : formatNotesAsTxt(sourceNotes);
+
+      downloadTextFile({
+        content,
+        filename: getExportFilename(format),
+        mimeType: isJson
+          ? "application/json;charset=utf-8"
+          : "text/plain;charset=utf-8",
+      });
+
+      toast.success(
+        `Exported ${normalizedNotes.length} note${normalizedNotes.length === 1 ? "" : "s"} as ${format.toUpperCase()}.`,
+      );
+    } catch (err) {
+      console.error("Export notes failed:", err);
+      toast.error("Failed to export notes.");
+    } finally {
+      setExportLoading(false);
+    }
   }
 
   async function handleManualImportGuestNotes() {
@@ -547,19 +601,47 @@ function Settings({ user, isLoggedIn, onLogout }) {
           )}
 
           {/* ======= DATA ======= */}
-          <div className="settings-section settings-section-muted">
+          <div className="settings-section">
             <h3 className="settings-section-title">
               <span className="material-icons">download</span>
               Data & Storage
             </h3>
-            <div className="settings-item">
+            <div className="settings-item settings-item-col export-notes-item">
               <div className="settings-item-info">
                 <p className="settings-item-label">Export notes</p>
                 <p className="settings-item-desc">
-                  Download your notes as PDF, TXT or JSON.
+                  Download {isLoggedIn
+                    ? "your account notes"
+                    : "guest notes from this browser"} as readable TXT or backup JSON. Voice note exports include metadata only.
                 </p>
               </div>
-              <span className="settings-coming-soon">Coming soon</span>
+              <div className="export-actions">
+                <button
+                  type="button"
+                  className="settings-save-btn export-btn"
+                  disabled={exportLoading}
+                  onClick={() => handleExportNotes("txt")}
+                >
+                  <span className="material-icons">description</span>
+                  Export TXT
+                </button>
+                <button
+                  type="button"
+                  className="settings-save-btn export-btn export-btn-secondary"
+                  disabled={exportLoading}
+                  onClick={() => handleExportNotes("json")}
+                >
+                  <span className="material-icons">data_object</span>
+                  Export JSON
+                </button>
+              </div>
+              <p className="settings-item-desc export-helper-text">
+                {exportLoading
+                  ? "Preparing your export..."
+                  : isLoggedIn
+                    ? "Exports are loaded securely from PostgreSQL."
+                    : `${guestNotesCount} guest note${guestNotesCount === 1 ? "" : "s"} available on this device.`}
+              </p>
             </div>
           </div>
 
