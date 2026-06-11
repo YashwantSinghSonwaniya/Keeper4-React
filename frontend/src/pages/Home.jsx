@@ -10,6 +10,7 @@ import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
 import VoiceRecorder from "../components/VoiceRecorder";
 import VoiceNotePlayer from "../components/VoiceNotePlayer";
 import useSpeechReader from "../hooks/useSpeechReader";
+import { printNoteAsPdf } from "../exportNotes";
 
 import {
   getNotes,
@@ -665,6 +666,27 @@ function Home({ user, isLoggedIn, onLogout }) {
     speechReader.toggleNote(`modal-${modalNoteId}`, modalNote);
   }
 
+  function handleExportPdf(id) {
+    const guestNoteIndex = parseInt(String(id).split("-")[1], 10);
+    const noteToExport = notes.find((noteItem) => {
+      if (isLoggedIn) return noteItem.id === id;
+      return getGlobalNoteIndex(noteItem) === guestNoteIndex;
+    });
+
+    if (!noteToExport) {
+      toast.error("Unable to find this note for PDF export.");
+      return;
+    }
+
+    try {
+      printNoteAsPdf(noteToExport);
+      toast.success("PDF export opened. Choose Save as PDF in the print dialog.");
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      toast.error("Failed to export note as PDF.");
+    }
+  }
+
   // ✅ renderNote: use SortableNote when logged in, plain Note for guests
   function renderNote(noteItem, sectionIndex, section) {
     let id;
@@ -693,6 +715,7 @@ function Home({ user, isLoggedIn, onLogout }) {
           onPin={togglePin}
           onCategoryChange={changeCategory}
           onReadAloud={handleReadAloud}
+          onExportPdf={handleExportPdf}
           speechState={speechReader.getNoteSpeechState(id)}
         />
       );
@@ -715,6 +738,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         onPin={togglePin}
         onCategoryChange={changeCategory}
         onReadAloud={handleReadAloud}
+        onExportPdf={handleExportPdf}
         speechState={speechReader.getNoteSpeechState(id)}
       />
     );

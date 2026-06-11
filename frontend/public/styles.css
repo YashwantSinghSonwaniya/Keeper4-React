@@ -2472,3 +2472,53 @@ button:disabled {
     width: 100%;
   }
 }
+
+/* ======= NOTE EXPORT MENU ======= */
+.note-export-menu {
+  position: fixed;
+  z-index: 9999;
+  width: 150px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.15s ease;
+}
+
+.note-export-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.note-export-menu button:hover {
+  background: rgba(245, 186, 19, 0.18);
+}
+
+.note-export-menu .material-icons {
+  color: #d93025;
+  font-size: 18px;
+}
+
+.note-export-menu-dark {
+  background: #303134;
+}
+
+.note-export-menu-dark button {
+  color: #f1f3f4;
+}
+
+.note-export-menu-dark button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
