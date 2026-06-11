@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import CATEGORIES from "../categories";
 import VoiceNotePlayer from "./VoiceNotePlayer";
 
@@ -18,6 +18,7 @@ const NOTE_COLORS = [
 function Note(props) {
   const [showPalette, setShowPalette] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [localExportOpen, setLocalExportOpen] = useState(false);
   const [palettePos, setPalettePos] = useState({ top: 0, left: 0 });
   const [categoryPos, setCategoryPos] = useState({ top: 0, left: 0 });
 
@@ -25,14 +26,22 @@ function Note(props) {
   const paletteBtnRef = useRef(null);
   const categoryRef = useRef(null);
   const categoryBtnRef = useRef(null);
+  const exportRef = useRef(null);
+  const exportBtnRef = useRef(null);
 
+  const { id, onCloseExportDropdown } = props;
   const isDark = props.color === "#232323";
+  const isExportControlled = props.exportDropdownOpen !== undefined;
+  const exportDropdownOpen = isExportControlled
+    ? props.exportDropdownOpen
+    : localExportOpen;
   const speechState = props.speechState || {};
   const isSpeechActive = Boolean(speechState.isActive);
   const isSpeechReading = Boolean(speechState.isReading);
 
   function handleReadClick(e) {
     e.stopPropagation();
+    closeExportDropdown();
     if (props.onReadAloud) {
       props.onReadAloud(props.id, {
         title: props.title,
@@ -44,6 +53,34 @@ function Note(props) {
   const currentCategory = CATEGORIES.find(
     (c) => c.id === (props.category || "none")
   );
+
+  const closeExportDropdown = useCallback(() => {
+    if (isExportControlled) {
+      if (onCloseExportDropdown) onCloseExportDropdown(id);
+      return;
+    }
+
+    setLocalExportOpen(false);
+  }, [id, isExportControlled, onCloseExportDropdown]);
+
+  function handleExportToggle(e) {
+    e.stopPropagation();
+    if (props.onToggleExportDropdown) {
+      props.onToggleExportDropdown(props.id);
+    } else {
+      setLocalExportOpen((prev) => !prev);
+    }
+
+    setShowPalette(false);
+    setShowCategoryPicker(false);
+  }
+
+  function handleExport(format) {
+    if (props.onExport) {
+      props.onExport(props.id, format);
+    }
+    closeExportDropdown();
+  }
 
   // Close palettes on outside click
   useEffect(() => {
@@ -64,11 +101,19 @@ function Note(props) {
       ) {
         setShowCategoryPicker(false);
       }
+      if (
+        exportRef.current &&
+        !exportRef.current.contains(e.target) &&
+        exportBtnRef.current &&
+        !exportBtnRef.current.contains(e.target)
+      ) {
+        closeExportDropdown();
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () =>
       document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [closeExportDropdown]);
 
   function handlePaletteToggle() {
     if (!showPalette && paletteBtnRef.current) {
@@ -91,6 +136,7 @@ function Note(props) {
     }
     setShowPalette((prev) => !prev);
     setShowCategoryPicker(false);
+    closeExportDropdown();
   }
 
   function handleCategoryToggle() {
@@ -112,6 +158,7 @@ function Note(props) {
     }
     setShowCategoryPicker((prev) => !prev);
     setShowPalette(false);
+    closeExportDropdown();
   }
 
   return (
@@ -239,6 +286,49 @@ function Note(props) {
           </span>
           <span className="read-aloud-label">{speechState.label || "Read"}</span>
         </button>
+
+        {/* Export */}
+        <div className="note-export-wrapper">
+          <button
+            ref={exportBtnRef}
+            className="note-export-btn"
+            onClick={handleExportToggle}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            title="Export note"
+            aria-expanded={exportDropdownOpen}
+            aria-haspopup="menu"
+            style={{ color: isDark ? "#ccc" : "#5f6368" }}
+          >
+            <span>Export ▼</span>
+          </button>
+
+          {exportDropdownOpen && (
+            <div
+              className={`note-export-menu ${isDark ? "note-export-menu-dark" : ""}`}
+              ref={exportRef}
+              role="menu"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              {["pdf", "txt", "json"].map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleExport(format);
+                  }}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Color */}
         <button

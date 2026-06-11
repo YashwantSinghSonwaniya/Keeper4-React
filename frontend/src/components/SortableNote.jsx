@@ -37,6 +37,10 @@ function SortableNote(props) {
         onPin={props.onPin}
         onCategoryChange={props.onCategoryChange}
         onReadAloud={props.onReadAloud}
+        onExport={props.onExport}
+        exportDropdownOpen={props.exportDropdownOpen}
+        onToggleExportDropdown={props.onToggleExportDropdown}
+        onCloseExportDropdown={props.onCloseExportDropdown}
         speechState={props.speechState}
       />
     </div>
