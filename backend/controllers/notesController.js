@@ -1,25 +1,44 @@
 const pool = require("../db");
 
+const voiceNoteJsonSql = `
+  CASE
+    WHEN vn.id IS NULL THEN NULL
+    ELSE json_build_object(
+      'id', vn.id,
+      'audio_url', vn.audio_url,
+      'duration', vn.duration,
+      'file_size', vn.file_size,
+      'mime_type', vn.mime_type,
+      'storage_provider', vn.storage_provider,
+      'storage_key', vn.storage_key,
+      'created_at', vn.created_at,
+      'updated_at', vn.updated_at
+    )
+  END AS voice_note
+`;
+
+function updatedNoteWithVoiceNoteQuery(updateSql) {
+  return `
+    WITH updated_note AS (
+      ${updateSql}
+      RETURNING *
+    )
+    SELECT
+      n.*,
+      ${voiceNoteJsonSql}
+    FROM updated_note n
+    LEFT JOIN voice_notes vn
+      ON vn.note_id = n.id AND vn.user_id = n.user_id
+  `;
+}
+
 // ✅ GET all notes for logged in user
 async function getNotes(req, res) {
   try {
     const result = await pool.query(
       `SELECT
          n.*,
-         CASE
-           WHEN vn.id IS NULL THEN NULL
-           ELSE json_build_object(
-             'id', vn.id,
-             'audio_url', vn.audio_url,
-             'duration', vn.duration,
-             'file_size', vn.file_size,
-             'mime_type', vn.mime_type,
-             'storage_provider', vn.storage_provider,
-             'storage_key', vn.storage_key,
-             'created_at', vn.created_at,
-             'updated_at', vn.updated_at
-           )
-         END AS voice_note
+         ${voiceNoteJsonSql}
        FROM notes n
        LEFT JOIN voice_notes vn
          ON vn.note_id = n.id AND vn.user_id = n.user_id
@@ -65,10 +84,11 @@ async function updateNote(req, res) {
   const { title, content, category } = req.body;
   try {
     const result = await pool.query(
-      `UPDATE notes 
-       SET title=$1, content=$2, category=$3, updated_at=NOW()
-       WHERE id=$4 AND user_id=$5 
-       RETURNING *`,
+      updatedNoteWithVoiceNoteQuery(`
+        UPDATE notes
+        SET title=$1, content=$2, category=$3, updated_at=NOW()
+        WHERE id=$4 AND user_id=$5
+      `),
       [title, content, category || "none", id, req.user.id]
     );
     if (result.rows.length === 0) {
@@ -130,9 +150,16 @@ async function updateNoteColor(req, res) {
   const { color } = req.body;
   try {
     const result = await pool.query(
-      "UPDATE notes SET color=$1, updated_at=NOW() WHERE id=$2 AND user_id=$3 RETURNING *",
+      updatedNoteWithVoiceNoteQuery(`
+        UPDATE notes
+        SET color=$1, updated_at=NOW()
+        WHERE id=$2 AND user_id=$3
+      `),
       [color, id, req.user.id]
     );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Note not found." });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Update color error:", err.message);
@@ -145,10 +172,16 @@ async function togglePin(req, res) {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      `UPDATE notes SET is_pinned = NOT is_pinned, updated_at=NOW()
-       WHERE id=$1 AND user_id=$2 RETURNING *`,
+      updatedNoteWithVoiceNoteQuery(`
+        UPDATE notes
+        SET is_pinned = NOT is_pinned, updated_at=NOW()
+        WHERE id=$1 AND user_id=$2
+      `),
       [id, req.user.id]
     );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Note not found." });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Toggle pin error:", err.message);
@@ -161,10 +194,16 @@ async function updateNoteCategory(req, res) {
   const { category } = req.body;
   try {
     const result = await pool.query(
-      `UPDATE notes SET category=$1, updated_at=NOW()
-       WHERE id=$2 AND user_id=$3 RETURNING *`,
+      updatedNoteWithVoiceNoteQuery(`
+        UPDATE notes
+        SET category=$1, updated_at=NOW()
+        WHERE id=$2 AND user_id=$3
+      `),
       [category || "none", id, req.user.id]
     );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Note not found." });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Update category error:", err.message);
