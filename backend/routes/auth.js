@@ -6,6 +6,7 @@ const {
   login,
   googleAuth,
   forgotPassword,
+  resetPassword,
   changePassword,
   deleteAccount,
   updateProfile,
@@ -13,8 +14,9 @@ const {
 
 router.post("/register", register);
 router.post("/login", login);
-router.post("/google", googleAuth);           // ✅ New Google OAuth endpoint
-router.post("/forgot-password", forgotPassword);
+router.post("/google", googleAuth);                  // ✅ Google OAuth endpoint
+router.post("/forgot-password", forgotPassword);     // ✅ Sends reset email
+router.post("/reset-password", resetPassword);       // ✅ Resets password via token
 router.put("/change-password", authenticateToken, changePassword);
 router.delete("/delete-account", authenticateToken, deleteAccount);
 router.put("/update-profile", authenticateToken, updateProfile);

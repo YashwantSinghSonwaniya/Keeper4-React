@@ -1,7 +1,9 @@
 const pool = require("../db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
+const { sendPasswordResetEmail } = require("../utils/email");
 require("dotenv").config();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -74,6 +76,26 @@ function validatePassword(password) {
     return "Password must be 128 characters or fewer.";
   }
   return null; // valid
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PASSWORD RESET TOKEN HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Generate a cryptographically secure random reset token (raw, for the email)
+ * and its SHA-256 hash (for storage in the database).
+ *
+ * We never store the raw token. If the DB leaks, stored hashes are useless
+ * because an attacker cannot reverse SHA-256 to the original token.
+ */
+function generateResetToken() {
+  const rawToken = crypto.randomBytes(32).toString("hex"); // 64 hex chars
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(rawToken)
+    .digest("hex");
+  return { rawToken, hashedToken };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -304,6 +326,12 @@ async function googleAuth(req, res) {
 
 // ────────────────────────────────────────────────────────────────────────
 // FORGOT PASSWORD
+//  - Always returns the same generic success message (prevents email
+//    enumeration: attackers cannot tell which emails are registered).
+//  - Generates a secure token, stores ONLY its SHA-256 hash + 1-hour expiry.
+//  - Emails the RAW token inside the reset link via Nodemailer.
+//  - Google-only accounts (no password) are silently skipped — we still
+//    return the generic message so existence is not revealed.
 // ────────────────────────────────────────────────────────────────────────
 async function forgotPassword(req, res) {
   const { email } = req.body;
@@ -313,22 +341,121 @@ async function forgotPassword(req, res) {
   }
 
   const normalizedEmail = normalizeEmail(email);
+  const genericMessage =
+    "If this email exists, a reset link has been sent.";
 
   try {
     const result = await pool.query(
-      "SELECT id FROM users WHERE email = $1",
+      "SELECT id, name, email, password FROM users WHERE email = $1",
       [normalizedEmail]
     );
 
+    // Email not found → respond generically (no enumeration)
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: "No account found with this email." });
+      return res.json({ message: genericMessage });
     }
 
-    res.json({
-      message: "If this email exists, a reset link has been sent.",
-    });
+    const user = result.rows[0];
+
+    // Google-only account (no password) → cannot reset a password that
+    // doesn't exist. Respond generically without sending an email.
+    if (!user.password) {
+      return res.json({ message: genericMessage });
+    }
+
+    // Generate secure token + store hash and expiry (1 hour from now)
+    const { rawToken, hashedToken } = generateResetToken();
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // +1 hour
+
+    await pool.query(
+      "UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3",
+      [hashedToken, expiry, user.id]
+    );
+
+    // Build the reset link pointing at the frontend Reset Password page
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+    // Send the email. If sending fails, roll back the stored token so the
+    // user isn't left with a dangling, unusable reset token.
+    try {
+      await sendPasswordResetEmail(user.email, resetLink, user.name);
+    } catch (mailErr) {
+      console.error("Reset email send failed:", mailErr.message);
+      await pool.query(
+        "UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = $1",
+        [user.id]
+      );
+      return res.status(500).json({
+        error: "Could not send reset email. Please try again later.",
+      });
+    }
+
+    return res.json({ message: genericMessage });
   } catch (err) {
     console.error("Forgot password error:", err.message);
+    res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// RESET PASSWORD
+//  - Receives the RAW token + new password from the Reset Password page.
+//  - Hashes the raw token and looks up a user whose stored hash matches AND
+//    whose expiry is still in the future.
+//  - On success: bcrypt-hashes the new password, clears the reset token
+//    columns (single-use), and returns success.
+//  - Expired or invalid tokens are rejected with a clear message.
+// ────────────────────────────────────────────────────────────────────────
+async function resetPassword(req, res) {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res
+      .status(400)
+      .json({ error: "Reset token and new password are required." });
+  }
+
+  // Validate the new password against the same rules as everywhere else
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
+
+  try {
+    // Hash the incoming raw token the same way it was stored, then look up
+    // a matching, non-expired record.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const result = await pool.query(
+      "SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()",
+      [hashedToken]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({
+        error: "This reset link is invalid or has expired. Please request a new one.",
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Hash the new password and clear the reset token (single-use)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      "UPDATE users SET password = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2",
+      [hashedPassword, user.id]
+    );
+
+    res.json({
+      message: "Password has been reset successfully! You can now log in.",
+    });
+  } catch (err) {
+    console.error("Reset password error:", err.message);
     res.status(500).json({ error: "Server error. Please try again." });
   }
 }
@@ -450,6 +577,7 @@ module.exports = {
   login,
   googleAuth,
   forgotPassword,
+  resetPassword,
   changePassword,
   deleteAccount,
   updateProfile,

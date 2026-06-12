@@ -38,6 +38,7 @@ function Login({ onLogin }) {
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -127,13 +128,30 @@ function Login({ onLogin }) {
     e.preventDefault();
     setForgotMsg("");
 
+    // Client-side email format check for instant feedback
+    const normalizedEmail = forgotEmail.trim().toLowerCase();
+    if (!isValidEmailFormat(normalizedEmail)) {
+      setForgotMsg("Please enter a valid email address.");
+      return;
+    }
+
+    setForgotLoading(true);
     try {
       const { forgotPassword } = await import("../api");
-      // Normalize the forgot-password email too
-      await forgotPassword({ email: forgotEmail.trim().toLowerCase() });
-      setForgotMsg("If this email exists, a reset link has been sent.");
+      await forgotPassword({ email: normalizedEmail });
+      // Always show the generic message returned by the backend. We do NOT
+      // reveal whether the email exists (prevents account enumeration).
+      setForgotMsg(
+        "If this email exists, a reset link has been sent. Please check your inbox (and spam folder).",
+      );
     } catch (err) {
-      setForgotMsg(err.response?.data?.error || "Something went wrong.");
+      // Only true server/network errors reach here now.
+      setForgotMsg(
+        err.response?.data?.error ||
+          "Something went wrong. Please try again later.",
+      );
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -208,8 +226,8 @@ function Login({ onLogin }) {
 
               {forgotMsg && <p className="forgot-msg">{forgotMsg}</p>}
 
-              <button type="submit" className="auth-btn">
-                Send Reset Link
+              <button type="submit" className="auth-btn" disabled={forgotLoading}>
+                {forgotLoading ? "Sending..." : "Send Reset Link"}
               </button>
             </form>
 

@@ -4,6 +4,7 @@ import { Switch, Route, Redirect } from "react-router-dom";
 import Home from "../pages/Home";
 import Login from "../pages/Login";
 import Register from "../pages/Register";
+import ResetPassword from "../pages/ResetPassword";
 
 import toast from "react-hot-toast";
 import Settings from "../pages/Settings";
@@ -65,6 +66,9 @@ function App() {
           )
         }
       />
+      {/* ✅ Reset Password page — accessible via the link in the reset email.
+          Not redirected even if logged in, so the flow always works. */}
+      <Route path="/reset-password" render={() => <ResetPassword />} />
       <Route
         path="/settings"
         render={() => (
