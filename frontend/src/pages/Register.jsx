@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Link, useHistory } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { registerUser, googleAuth } from "../api";
 import { useGoogleLogin } from "@react-oauth/google";
+import { useHistory } from "react-router-dom";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Email validator — mirrors backend rules for instant client-side feedback.
@@ -27,7 +28,6 @@ function isValidEmailFormat(email) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Password validator — mirrors backend NIST 800-63B rules.
-// Returns an error string if invalid, or null if valid.
 // ─────────────────────────────────────────────────────────────────────────────
 function validatePassword(password) {
   if (!password || password.trim().length === 0) {
@@ -46,6 +46,8 @@ function Register({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);   // ✅ "check your email" state
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -58,12 +60,11 @@ function Register({ onLogin }) {
     const { name, value } = e.target;
     setForm((prev) => ({
       ...prev,
-      // Lowercase email as the user types to prevent case-mismatch surprises
       [name]: name === "email" ? value.toLowerCase() : value,
     }));
   }
 
-  // ✅ Google OAuth — same backend endpoint handles sign-up and sign-in
+  // ✅ Google OAuth — creates an auto-verified account and logs in immediately.
   const handleGoogleRegister = useGoogleLogin({
     flow: "auth-code",
     onSuccess: async (codeResponse) => {
@@ -98,11 +99,8 @@ function Register({ onLogin }) {
     e.preventDefault();
     setError("");
 
-    // ── Normalize before validation ───────────────────────────────────
-    const trimmedName     = form.name.trim();
+    const trimmedName = form.name.trim();
     const normalizedEmail = form.email.trim().toLowerCase();
-
-    // ── Client-side validation (instant feedback, no server round trip) ─
 
     if (!trimmedName) {
       setError("Name is required.");
@@ -112,13 +110,11 @@ function Register({ onLogin }) {
       setError("Name must be 100 characters or fewer.");
       return;
     }
-
     if (!isValidEmailFormat(normalizedEmail)) {
       setError("Please enter a valid email address (e.g. user@example.com).");
       return;
     }
 
-    // Phase 2: password validation
     const passwordError = validatePassword(form.password);
     if (passwordError) {
       setError(passwordError);
@@ -128,28 +124,58 @@ function Register({ onLogin }) {
     setLoading(true);
 
     try {
-      const res = await registerUser({
+      // ✅ Phase 4: registration does NOT create a user or log in.
+      // It stages a pending registration and sends a verification email.
+      await registerUser({
         name: trimmedName,
         email: normalizedEmail,
-        password: form.password,  // never trim passwords — spaces may be intentional
+        password: form.password,
       });
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
-
-      const userKey = res.data.user.id
-        ? `user_${res.data.user.id}`
-        : `user_${encodeURIComponent(res.data.user.email || "unknown")}`;
-      sessionStorage.setItem(`guestImportPromptPending_${userKey}`, "true");
-      sessionStorage.setItem(`guestImportPromptHandled_${userKey}`, "false");
-
-      onLogin(res.data.user);
-      history.push("/");
+      setSubmittedEmail(normalizedEmail);
+      setSubmitted(true);
     } catch (err) {
       setError(err.response?.data?.error || "Registration failed.");
     } finally {
       setLoading(false);
     }
+  }
+
+  // ✅ Confirmation screen — shown after a successful registration submit.
+  if (submitted) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <h2>Check Your Email</h2>
+          <p className="forgot-msg">
+            📧 We've sent a verification link to{" "}
+            <strong>{submittedEmail}</strong>.
+          </p>
+          <p style={{ fontSize: "14px", lineHeight: 1.5 }}>
+            Please click the link in that email to activate your account.
+            The link expires in 24 hours. Your account will not be created
+            until you verify.
+          </p>
+          <p style={{ fontSize: "13px", color: "#5f6368", lineHeight: 1.5 }}>
+            Didn't get it? Check your spam folder, or{" "}
+            <span
+              className="forgot-password-link"
+              style={{ display: "inline" }}
+              onClick={() => {
+                setSubmitted(false);
+                setForm({ name: "", email: "", password: "" });
+              }}
+            >
+              try registering again
+            </span>
+            .
+          </p>
+          <p>
+            Already verified? <Link to="/login">Login</Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -196,7 +222,6 @@ function Register({ onLogin }) {
             onChange={handleChange}
             required
           />
-          {/* ✅ Phase 2: Password requirements hint */}
           <p className="password-hint">
             Use 8–128 characters. No special characters required.
           </p>
@@ -204,7 +229,7 @@ function Register({ onLogin }) {
           {error && <p className="error">{error}</p>}
 
           <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? "Creating account..." : "Register"}
+            {loading ? "Sending verification..." : "Register"}
           </button>
         </form>
 

@@ -5,6 +5,7 @@ import Home from "../pages/Home";
 import Login from "../pages/Login";
 import Register from "../pages/Register";
 import ResetPassword from "../pages/ResetPassword";
+import VerifyEmail from "../pages/VerifyEmail";
 
 import toast from "react-hot-toast";
 import Settings from "../pages/Settings";
@@ -15,7 +16,6 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ✅ Only token + user info needed — no notes in localStorage
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("loggedInUser");
 
@@ -66,8 +66,13 @@ function App() {
           )
         }
       />
-      {/* ✅ Reset Password page — accessible via the link in the reset email.
-          Not redirected even if logged in, so the flow always works. */}
+      {/* ✅ Email verification — clicked from the verification email.
+          Creates the account, logs in, redirects home. */}
+      <Route
+        path="/verify-email"
+        render={() => <VerifyEmail onLogin={handleLogin} />}
+      />
+      {/* ✅ Password reset link target */}
       <Route path="/reset-password" render={() => <ResetPassword />} />
       <Route
         path="/settings"

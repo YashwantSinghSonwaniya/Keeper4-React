@@ -3,7 +3,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
-const { sendPasswordResetEmail } = require("../utils/email");
+const {
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} = require("../utils/email");
 require("dotenv").config();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -52,15 +55,6 @@ function isValidEmail(email) {
 /**
  * Validate password — NIST 800-63B aligned.
  * Returns an error string if invalid, or null if valid.
- *
- * ✅ Minimum 8 characters  (NIST 800-63B minimum)
- * ✅ Maximum 128 characters (prevents bcrypt silent truncation abuse at 72 bytes)
- * ✅ Whitespace-only rejected (accidental input protection)
- *
- * ❌ NO complexity rules enforced — NIST 800-63B explicitly recommends against
- *    mandatory uppercase / lowercase / digit / symbol requirements.
- *    Mandatory complexity produces predictable patterns like "Password1!" which
- *    are weaker than simple long passphrases. Length drives entropy, not variety.
  */
 function validatePassword(password) {
   if (!password || typeof password !== "string") {
@@ -79,17 +73,14 @@ function validatePassword(password) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  PASSWORD RESET TOKEN HELPERS
+//  TOKEN HELPERS
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Generate a cryptographically secure random reset token (raw, for the email)
- * and its SHA-256 hash (for storage in the database).
- *
- * We never store the raw token. If the DB leaks, stored hashes are useless
- * because an attacker cannot reverse SHA-256 to the original token.
+ * Generate a cryptographically secure random token (raw, for the email link)
+ * and its SHA-256 hash (for storage in the database). We never store raw tokens.
  */
-function generateResetToken() {
+function generateToken() {
   const rawToken = crypto.randomBytes(32).toString("hex"); // 64 hex chars
   const hashedToken = crypto
     .createHash("sha256")
@@ -98,9 +89,34 @@ function generateResetToken() {
   return { rawToken, hashedToken };
 }
 
+/** Hash an incoming raw token the same way it was stored. */
+function hashToken(rawToken) {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
+/** Build a signed JWT for a user row. */
+function signJwt(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email, name: user.name },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+/**
+ * Delete expired pending registrations. Called opportunistically during
+ * register/verify so the table is self-cleaning without a separate cron.
+ */
+async function purgeExpiredPendingUsers() {
+  try {
+    await pool.query("DELETE FROM pending_users WHERE token_expires < NOW()");
+  } catch (err) {
+    console.error("Pending users purge error:", err.message);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Google OAuth2 client
-//  'postmessage' = required redirect_uri for popup auth-code flows
 // ═══════════════════════════════════════════════════════════════════════
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
@@ -109,74 +125,198 @@ const googleClient = new OAuth2Client(
 );
 
 // ────────────────────────────────────────────────────────────────────────
-// REGISTER
+// REGISTER  (Phase 4: NO user row is created here)
+//  - Validates input.
+//  - Rejects only if a FULLY VERIFIED account already exists (generic message).
+//  - bcrypt-hashes the password BEFORE storing it in pending_users.
+//  - Generates a verification token, stores ONLY its SHA-256 hash + 24h expiry.
+//  - UPSERTs into pending_users (re-registering overwrites the old pending row).
+//  - Emails the RAW token link. NO users row is created until verification.
 // ────────────────────────────────────────────────────────────────────────
 async function register(req, res) {
   const { name, email, password } = req.body;
 
-  // ── Presence check ───────────────────────────────────────────────────
   if (!name || !email || !password) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
-  // ── Normalize ────────────────────────────────────────────────────────
-  const trimmedName     = String(name).trim();
+  const trimmedName = String(name).trim();
   const normalizedEmail = normalizeEmail(email);
 
-  // ── Name validation ──────────────────────────────────────────────────
   if (!trimmedName) {
     return res.status(400).json({ error: "Name cannot be blank." });
   }
   if (trimmedName.length > 100) {
-    return res.status(400).json({ error: "Name must be 100 characters or fewer." });
+    return res
+      .status(400)
+      .json({ error: "Name must be 100 characters or fewer." });
   }
 
-  // ── Email format validation ──────────────────────────────────────────
   if (!isValidEmail(normalizedEmail)) {
     return res.status(400).json({
       error: "Please enter a valid email address (e.g. user@example.com).",
     });
   }
 
-  // ── Password validation (Phase 2) ────────────────────────────────────
   const passwordError = validatePassword(password);
   if (passwordError) {
     return res.status(400).json({ error: passwordError });
   }
 
+  // Generic success message — used whether the email is new OR already taken,
+  // so we never reveal which emails are registered (enumeration protection).
+  const genericMessage =
+    "If your email is valid, a verification link has been sent. Please check your inbox.";
+
   try {
-    // ── Duplicate check against normalized email ──────────────────────
-    const existing = await pool.query(
+    // Keep the staging table clean.
+    await purgeExpiredPendingUsers();
+
+    // If a REAL (verified) account already exists, do not create a pending
+    // record and do not send an email. Respond generically.
+    const existingUser = await pool.query(
       "SELECT id FROM users WHERE email = $1",
       [normalizedEmail]
     );
-
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ error: "An account with this email already exists." });
+    if (existingUser.rows.length > 0) {
+      return res.json({ message: genericMessage });
     }
 
+    // Hash the password NOW so plaintext never persists, even in staging.
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const result = await pool.query(
-      "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email",
-      [trimmedName, normalizedEmail, hashedPassword]
+    // Generate verification token (raw for email, hash for DB) + 24h expiry.
+    const { rawToken, hashedToken } = generateToken();
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24 hours
+
+    // UPSERT: if the user re-registers before verifying, overwrite the row
+    // with fresh credentials + a fresh token. The ON CONFLICT targets the
+    // UNIQUE email constraint on pending_users.
+    await pool.query(
+      `INSERT INTO pending_users
+         (name, email, password, verification_token, token_expires)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (email) DO UPDATE SET
+         name               = EXCLUDED.name,
+         password           = EXCLUDED.password,
+         verification_token = EXCLUDED.verification_token,
+         token_expires      = EXCLUDED.token_expires,
+         created_at         = NOW()`,
+      [trimmedName, normalizedEmail, hashedPassword, hashedToken, expiry]
     );
 
-    const user = result.rows[0];
+    // Build the verification link pointing at the frontend page.
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const verifyLink = `${frontendUrl}/verify-email?token=${rawToken}`;
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+    // Send the email. If sending fails, remove the pending row so no dangling
+    // unverifiable record remains.
+    try {
+      await sendVerificationEmail(normalizedEmail, verifyLink, trimmedName);
+    } catch (mailErr) {
+      console.error("Verification email send failed:", mailErr.message);
+      await pool.query("DELETE FROM pending_users WHERE email = $1", [
+        normalizedEmail,
+      ]);
+      return res.status(500).json({
+        error: "Could not send verification email. Please try again later.",
+      });
+    }
+
+    return res.json({ message: genericMessage });
+  } catch (err) {
+    console.error("Register error:", err.message);
+    res.status(500).json({ error: "Server error. Please try again." });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// VERIFY EMAIL  (Phase 4: this is where the users row is finally created)
+//  - Receives the RAW token from the verification link.
+//  - Hashes it and looks up a non-expired pending_users row.
+//  - Transactionally: creates the verified users row + deletes the pending row.
+//  - Returns a JWT so the user is logged in immediately after verifying.
+// ────────────────────────────────────────────────────────────────────────
+async function verifyEmail(req, res) {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ error: "Verification token is required." });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await purgeExpiredPendingUsers();
+
+    const hashedToken = hashToken(token);
+
+    // Find the matching, non-expired pending registration.
+    const pendingResult = await pool.query(
+      `SELECT id, name, email, password
+         FROM pending_users
+        WHERE verification_token = $1
+          AND token_expires > NOW()`,
+      [hashedToken]
     );
 
-    res.status(201).json({
-      message: "Account created successfully!",
-      token,
+    if (pendingResult.rows.length === 0) {
+      client.release();
+      return res.status(400).json({
+        error:
+          "This verification link is invalid or has expired. Please register again.",
+      });
+    }
+
+    const pending = pendingResult.rows[0];
+
+    // ── Transaction: create verified user + remove pending row atomically ──
+    await client.query("BEGIN");
+
+    // Race safety: ensure no verified account was created in the meantime.
+    const existingUser = await client.query(
+      "SELECT id, name, email FROM users WHERE email = $1",
+      [pending.email]
+    );
+
+    let user;
+
+    if (existingUser.rows.length > 0) {
+      // Already verified elsewhere — just clean up the pending row.
+      user = existingUser.rows[0];
+      await client.query("DELETE FROM pending_users WHERE id = $1", [
+        pending.id,
+      ]);
+    } else {
+      const inserted = await client.query(
+        `INSERT INTO users (name, email, password, is_verified)
+         VALUES ($1, $2, $3, true)
+         RETURNING id, name, email`,
+        [pending.name, pending.email, pending.password] // password is already a bcrypt hash
+      );
+      user = inserted.rows[0];
+
+      await client.query("DELETE FROM pending_users WHERE id = $1", [
+        pending.id,
+      ]);
+    }
+
+    await client.query("COMMIT");
+    client.release();
+
+    const jwtToken = signJwt(user);
+
+    return res.json({
+      message: "Email verified! Your account is now active.",
+      token: jwtToken,
       user: { id: user.id, name: user.name, email: user.email },
     });
   } catch (err) {
-    console.error("Register error:", err.message);
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+    client.release();
+    console.error("Verify email error:", err.message);
     res.status(500).json({ error: "Server error. Please try again." });
   }
 }
@@ -191,26 +331,45 @@ async function login(req, res) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
-  // Normalize before lookup so "User@Gmail.COM" finds "user@gmail.com"
   const normalizedEmail = normalizeEmail(email);
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [normalizedEmail]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      normalizedEmail,
+    ]);
 
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: "No account found with this email." });
+      // Check if there's a PENDING (unverified) registration to give a helpful hint.
+      const pending = await pool.query(
+        "SELECT id FROM pending_users WHERE email = $1 AND token_expires > NOW()",
+        [normalizedEmail]
+      );
+      if (pending.rows.length > 0) {
+        return res.status(400).json({
+          error:
+            "This email is awaiting verification. Please check your inbox for the verification link.",
+        });
+      }
+      return res
+        .status(400)
+        .json({ error: "No account found with this email." });
     }
 
     const user = result.rows[0];
 
-    // Google-only accounts have no password set
+    // Google-only accounts have no password set.
     if (!user.password) {
       return res.status(400).json({
         error:
           "This account was created with Google. Please click 'Continue with Google' to sign in.",
+      });
+    }
+
+    // Safety net: reject any legacy unverified accounts (should not exist after migration).
+    if (user.is_verified === false) {
+      return res.status(400).json({
+        error:
+          "Your account is not verified. Please complete email verification first.",
       });
     }
 
@@ -219,11 +378,7 @@ async function login(req, res) {
       return res.status(400).json({ error: "Incorrect password." });
     }
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signJwt(user);
 
     res.json({
       message: "Login successful!",
@@ -237,7 +392,7 @@ async function login(req, res) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// GOOGLE AUTH  (sign-in and sign-up in one endpoint)
+// GOOGLE AUTH  (auto-verified — Google already confirmed the email)
 // ────────────────────────────────────────────────────────────────────────
 async function googleAuth(req, res) {
   const { code } = req.body;
@@ -247,10 +402,8 @@ async function googleAuth(req, res) {
   }
 
   try {
-    // Exchange the one-time authorization code for tokens
     const { tokens } = await googleClient.getToken(code);
 
-    // Verify and decode the ID token
     const ticket = await googleClient.verifyIdToken({
       idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -262,7 +415,6 @@ async function googleAuth(req, res) {
 
     let user;
 
-    // Check if a user with this Google ID already exists
     const byGoogleId = await pool.query(
       "SELECT * FROM users WHERE google_id = $1",
       [googleId]
@@ -284,29 +436,30 @@ async function googleAuth(req, res) {
       );
 
       if (byEmail.rows.length > 0) {
-        // Link Google to the existing email/password account
+        // Link Google to the existing account — and ensure it's verified.
         user = byEmail.rows[0];
         await pool.query(
-          "UPDATE users SET google_id = $1, avatar = COALESCE($2, avatar) WHERE id = $3",
+          "UPDATE users SET google_id = $1, avatar = COALESCE($2, avatar), is_verified = true WHERE id = $3",
           [googleId, picture || null, user.id]
         );
         user.google_id = googleId;
+        user.is_verified = true;
         if (picture) user.avatar = picture;
       } else {
-        // Brand-new user — create account automatically
+        // Brand-new Google user — created immediately and auto-verified.
+        // Also clear any stale pending registration for this email.
+        await pool.query("DELETE FROM pending_users WHERE email = $1", [
+          normalizedEmail,
+        ]);
         const result = await pool.query(
-          "INSERT INTO users (name, email, google_id, avatar) VALUES ($1, $2, $3, $4) RETURNING *",
+          "INSERT INTO users (name, email, google_id, avatar, is_verified) VALUES ($1, $2, $3, $4, true) RETURNING *",
           [String(name).trim(), normalizedEmail, googleId, picture || null]
         );
         user = result.rows[0];
       }
     }
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signJwt(user);
 
     res.json({
       message: "Google login successful!",
@@ -320,18 +473,14 @@ async function googleAuth(req, res) {
     });
   } catch (err) {
     console.error("Google auth error:", err.message);
-    res.status(500).json({ error: "Google authentication failed. Please try again." });
+    res
+      .status(500)
+      .json({ error: "Google authentication failed. Please try again." });
   }
 }
 
 // ────────────────────────────────────────────────────────────────────────
 // FORGOT PASSWORD
-//  - Always returns the same generic success message (prevents email
-//    enumeration: attackers cannot tell which emails are registered).
-//  - Generates a secure token, stores ONLY its SHA-256 hash + 1-hour expiry.
-//  - Emails the RAW token inside the reset link via Nodemailer.
-//  - Google-only accounts (no password) are silently skipped — we still
-//    return the generic message so existence is not revealed.
 // ────────────────────────────────────────────────────────────────────────
 async function forgotPassword(req, res) {
   const { email } = req.body;
@@ -341,8 +490,7 @@ async function forgotPassword(req, res) {
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const genericMessage =
-    "If this email exists, a reset link has been sent.";
+  const genericMessage = "If this email exists, a reset link has been sent.";
 
   try {
     const result = await pool.query(
@@ -350,21 +498,17 @@ async function forgotPassword(req, res) {
       [normalizedEmail]
     );
 
-    // Email not found → respond generically (no enumeration)
     if (result.rows.length === 0) {
       return res.json({ message: genericMessage });
     }
 
     const user = result.rows[0];
 
-    // Google-only account (no password) → cannot reset a password that
-    // doesn't exist. Respond generically without sending an email.
     if (!user.password) {
       return res.json({ message: genericMessage });
     }
 
-    // Generate secure token + store hash and expiry (1 hour from now)
-    const { rawToken, hashedToken } = generateResetToken();
+    const { rawToken, hashedToken } = generateToken();
     const expiry = new Date(Date.now() + 60 * 60 * 1000); // +1 hour
 
     await pool.query(
@@ -372,12 +516,9 @@ async function forgotPassword(req, res) {
       [hashedToken, expiry, user.id]
     );
 
-    // Build the reset link pointing at the frontend Reset Password page
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    // Send the email. If sending fails, roll back the stored token so the
-    // user isn't left with a dangling, unusable reset token.
     try {
       await sendPasswordResetEmail(user.email, resetLink, user.name);
     } catch (mailErr) {
@@ -400,12 +541,6 @@ async function forgotPassword(req, res) {
 
 // ────────────────────────────────────────────────────────────────────────
 // RESET PASSWORD
-//  - Receives the RAW token + new password from the Reset Password page.
-//  - Hashes the raw token and looks up a user whose stored hash matches AND
-//    whose expiry is still in the future.
-//  - On success: bcrypt-hashes the new password, clears the reset token
-//    columns (single-use), and returns success.
-//  - Expired or invalid tokens are rejected with a clear message.
 // ────────────────────────────────────────────────────────────────────────
 async function resetPassword(req, res) {
   const { token, password } = req.body;
@@ -416,19 +551,13 @@ async function resetPassword(req, res) {
       .json({ error: "Reset token and new password are required." });
   }
 
-  // Validate the new password against the same rules as everywhere else
   const passwordError = validatePassword(password);
   if (passwordError) {
     return res.status(400).json({ error: passwordError });
   }
 
   try {
-    // Hash the incoming raw token the same way it was stored, then look up
-    // a matching, non-expired record.
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    const hashedToken = hashToken(token);
 
     const result = await pool.query(
       "SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()",
@@ -437,13 +566,12 @@ async function resetPassword(req, res) {
 
     if (result.rows.length === 0) {
       return res.status(400).json({
-        error: "This reset link is invalid or has expired. Please request a new one.",
+        error:
+          "This reset link is invalid or has expired. Please request a new one.",
       });
     }
 
     const user = result.rows[0];
-
-    // Hash the new password and clear the reset token (single-use)
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await pool.query(
@@ -470,7 +598,6 @@ async function changePassword(req, res) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
-  // ── Phase 2: Validate the new password against current rules ─────────
   const passwordError = validatePassword(newPassword);
   if (passwordError) {
     return res.status(400).json({ error: passwordError });
@@ -483,10 +610,10 @@ async function changePassword(req, res) {
 
     const user = result.rows[0];
 
-    // Google-only accounts have no password
     if (!user.password) {
       return res.status(400).json({
-        error: "Google accounts don't use passwords and cannot be changed here.",
+        error:
+          "Google accounts don't use passwords and cannot be changed here.",
       });
     }
 
@@ -522,7 +649,6 @@ async function deleteAccount(req, res) {
 
     const user = result.rows[0];
 
-    // Google-only accounts: JWT authentication is sufficient proof of identity
     if (!user.password) {
       await pool.query("DELETE FROM users WHERE id = $1", [req.user.id]);
       return res.json({ message: "Account deleted successfully." });
@@ -574,6 +700,7 @@ async function updateProfile(req, res) {
 
 module.exports = {
   register,
+  verifyEmail,
   login,
   googleAuth,
   forgotPassword,
