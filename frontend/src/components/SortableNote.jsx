@@ -38,10 +38,11 @@ function SortableNote(props) {
         onCategoryChange={props.onCategoryChange}
         onReadAloud={props.onReadAloud}
         onExport={props.onExport}
-        exportDropdownOpen={props.exportDropdownOpen}
-        onToggleExportDropdown={props.onToggleExportDropdown}
-        onCloseExportDropdown={props.onCloseExportDropdown}
         speechState={props.speechState}
+        /* NEW: single-open-menu controller props */
+        openMenuId={props.openMenuId}
+        onOpenMenu={props.onOpenMenu}
+        onCloseMenu={props.onCloseMenu}
       />
     </div>
   );

@@ -105,8 +105,24 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
-  const [openExportNoteId, setOpenExportNoteId] = useState(null);
+
+  // ✅ Single source of truth for which note's More menu is open.
+  // Guarantees only ONE menu can ever be open at a time.
+  const [openMenuNoteId, setOpenMenuNoteId] = useState(null);
+
   const speechReader = useSpeechReader();
+
+  function openNoteMenu(id) {
+    setOpenMenuNoteId(id);
+  }
+
+  function closeNoteMenu(id) {
+    setOpenMenuNoteId((current) => (current === id ? null : current));
+  }
+
+  function closeAllNoteMenus() {
+    setOpenMenuNoteId(null);
+  }
 
   function getGuestPromptUserKey() {
     if (!user) return null;
@@ -282,6 +298,11 @@ function Home({ user, isLoggedIn, onLogout }) {
     };
   }, [modalOpen, showGuestVoiceUpgrade]);
 
+  // ✅ Close any open note menu when the edit modal opens.
+  useEffect(() => {
+    if (modalOpen) closeAllNoteMenus();
+  }, [modalOpen]);
+
   const filteredNotes = notes.filter((note) => {
     const q = searchQuery.toLowerCase();
     const title = (note.title || "").toLowerCase();
@@ -342,6 +363,8 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function confirmDelete(id) {
+    // ✅ Always close menus before showing the confirm/deleting a note.
+    closeAllNoteMenus();
     if (skipDeleteConfirm) {
       actuallyDelete(id);
     } else {
@@ -353,6 +376,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     if (speechReader.activeId === id || speechReader.activeId === `modal-${id}`) {
       speechReader.stop();
     }
+
+    closeAllNoteMenus();
 
     const sound = new Audio("/sounds/deleteButton.wav");
     sound.currentTime = 0;
@@ -376,6 +401,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function editNoteHandler(id) {
+    closeAllNoteMenus();
     let note;
     if (isLoggedIn) {
       note = notes.find((n) => n.id === id);
@@ -407,14 +433,6 @@ function Home({ user, isLoggedIn, onLogout }) {
     // Guest IDs are prefixed like "pinned-5" or "unpinned-3".
     const globalIndex = parseInt(String(id).split("-")[1], 10);
     return notes[globalIndex];
-  }
-
-  function toggleExportDropdown(id) {
-    setOpenExportNoteId((currentId) => (currentId === id ? null : id));
-  }
-
-  function closeExportDropdown(id) {
-    setOpenExportNoteId((currentId) => (currentId === id ? null : currentId));
   }
 
   function handleExportNote(id, format) {
@@ -731,6 +749,8 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function handleReadAloud(id, note) {
+    // ✅ Entering Read mode must close any open menu.
+    closeAllNoteMenus();
     speechReader.toggleNote(id, note);
   }
 
@@ -768,10 +788,10 @@ function Home({ user, isLoggedIn, onLogout }) {
           onCategoryChange={changeCategory}
           onReadAloud={handleReadAloud}
           onExport={handleExportNote}
-          exportDropdownOpen={openExportNoteId === id}
-          onToggleExportDropdown={toggleExportDropdown}
-          onCloseExportDropdown={closeExportDropdown}
           speechState={speechReader.getNoteSpeechState(id)}
+          openMenuId={openMenuNoteId}
+          onOpenMenu={openNoteMenu}
+          onCloseMenu={closeNoteMenu}
         />
       );
     }
@@ -794,10 +814,10 @@ function Home({ user, isLoggedIn, onLogout }) {
         onCategoryChange={changeCategory}
         onReadAloud={handleReadAloud}
         onExport={handleExportNote}
-        exportDropdownOpen={openExportNoteId === id}
-        onToggleExportDropdown={toggleExportDropdown}
-        onCloseExportDropdown={closeExportDropdown}
         speechState={speechReader.getNoteSpeechState(id)}
+        openMenuId={openMenuNoteId}
+        onOpenMenu={openNoteMenu}
+        onCloseMenu={closeNoteMenu}
       />
     );
   }

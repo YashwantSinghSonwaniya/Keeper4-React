@@ -2527,3 +2527,313 @@ button:disabled {
 .note-actions .note-export-menu button:hover {
   transform: none;
 }
+/* ============================================================
+   ✅ NOTE ACTION SYSTEM v2  (Read + More ⋮  →  portal menu)
+   Replaces all previous .note-export-*, .note-more-*,
+   .color-palette popover, and .category-picker popover styles
+   for the note action row.
+   ============================================================ */
+
+/* Row layout: Read on the left, More (⋮) on the right */
+.note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.note:hover .note-actions {
+  opacity: 1;
+}
+
+.note-actions .read-aloud-btn {
+  margin-right: auto;
+  flex-shrink: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 18px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.note-actions .read-aloud-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.note-actions .read-aloud-active {
+  background: rgba(245, 186, 19, 0.18);
+}
+
+.read-aloud-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.read-aloud-label {
+  line-height: 1;
+}
+
+/* More (⋮) round icon button */
+.note-more-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.note-more-btn:hover,
+.note-more-active {
+  background: rgba(0, 0, 0, 0.08);
+  transform: scale(1.08);
+}
+
+.note-more-btn .material-icons {
+  font-size: 18px;
+}
+
+/* ------------------------------------------------------------
+   The floating menu panel — rendered via React portal into
+   <body> with position:fixed. Because it lives at the document
+   root, NO ancestor overflow / CSS columns / transform can clip
+   it, and a very high z-index keeps it above everything.
+   ------------------------------------------------------------ */
+.note-menu-panel {
+  position: fixed;
+  z-index: 13000;            /* above modals' note layer, below overlays */
+  width: 220px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.26);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: fadeIn 0.12s ease;
+  -webkit-overflow-scrolling: touch;
+}
+
+.note-menu-panel-dark {
+  background: #2c2c2c;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* Menu items — flex with overflow guards so nothing spills out */
+.note-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.note-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.note-menu-panel-dark .note-menu-item {
+  color: #eee;
+}
+
+.note-menu-panel-dark .note-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.note-menu-item .material-icons {
+  font-size: 18px;
+  color: #5f6368;
+  flex-shrink: 0;
+}
+
+.note-menu-panel-dark .note-menu-item .material-icons {
+  color: #bbb;
+}
+
+.note-menu-emoji {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Label takes remaining space and truncates instead of overflowing */
+.note-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Chevron pinned to the right edge, never outside the panel */
+.note-menu-chevron {
+  margin-left: auto;
+  font-size: 18px !important;
+  flex-shrink: 0;
+  color: #9aa0a6 !important;
+}
+
+.note-menu-item-active {
+  background: #fff8e1;
+  color: #c98a00;
+}
+
+.note-menu-panel-dark .note-menu-item-active {
+  background: rgba(245, 186, 19, 0.22);
+  color: #ffe08a;
+}
+
+/* Danger (Delete) */
+.note-menu-item-danger {
+  color: #d32f2f;
+}
+
+.note-menu-item-danger .material-icons {
+  color: #d32f2f;
+}
+
+.note-menu-item-danger:hover {
+  background: rgba(211, 47, 47, 0.1);
+}
+
+.note-menu-panel-dark .note-menu-item-danger {
+  color: #ff8a80;
+}
+
+.note-menu-panel-dark .note-menu-item-danger .material-icons {
+  color: #ff8a80;
+}
+
+.note-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.note-menu-panel-dark .note-menu-divider {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Sub-panel back button */
+.note-menu-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #5f6368;
+}
+
+.note-menu-back:hover {
+  background: #f3f4f6;
+}
+
+.note-menu-back .material-icons {
+  font-size: 18px;
+}
+
+.note-menu-panel-dark .note-menu-back {
+  color: #ccc;
+}
+
+.note-menu-panel-dark .note-menu-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Color sub-panel grid — contained inside the panel padding */
+.note-menu-colorgrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  padding: 6px;
+}
+
+.note-menu-colordot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.note-menu-colordot:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Scroll area for the (longer) category list */
+.note-menu-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------
+   Responsive — the panel is fixed & viewport-clamped in JS, so
+   we only tune widths here. It can never be clipped on any device.
+   ------------------------------------------------------------ */
+@media (max-width: 768px) {
+  .note-actions {
+    opacity: 1;           /* always visible on touch devices */
+  }
+}
+
+@media (max-width: 480px) {
+  .note-menu-panel {
+    width: min(240px, calc(100vw - 16px));
+  }
+
+  .read-aloud-label {
+    display: none;        /* keep Read compact on phones */
+  }
+
+  .note-actions .read-aloud-btn {
+    min-width: 40px;
+  }
+}
