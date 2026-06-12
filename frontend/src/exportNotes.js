@@ -20,53 +20,28 @@ function getVoiceMetadata(note) {
   };
 }
 
-export function normalizeExportNote(note) {
-  const source = note && typeof note === "object" ? note : {};
-  const normalized = {
-    title: safeString(source.title),
-    content: safeString(source.content),
-    category: safeString(source.category || "none"),
-    pinned: Boolean(source.is_pinned || source.isPinned || source.pinned),
-    created_at: normalizeDate(source.created_at || source.createdAt),
-    updated_at: normalizeDate(source.updated_at || source.updatedAt),
-  };
-
-  const voice = getVoiceMetadata(source);
-  if (voice) {
-    normalized.voice_note = voice;
-  }
-
-  return normalized;
-}
-
 export function normalizeExportNotes(notes) {
   if (!Array.isArray(notes)) return [];
 
   return notes
     .filter((note) => note && typeof note === "object")
-    .map((note) => normalizeExportNote(note));
-}
+    .map((note) => {
+      const normalized = {
+        title: safeString(note.title),
+        content: safeString(note.content),
+        category: safeString(note.category || "none"),
+        pinned: Boolean(note.is_pinned || note.isPinned || note.pinned),
+        created_at: normalizeDate(note.created_at || note.createdAt),
+        updated_at: normalizeDate(note.updated_at || note.updatedAt),
+      };
 
-function escapeHtml(value) {
-  return safeString(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+      const voice = getVoiceMetadata(note);
+      if (voice) {
+        normalized.voice_note = voice;
+      }
 
-function formatDurationSeconds(value) {
-  if (value === null || value === undefined || value === "") {
-    return "Not available";
-  }
-
-  const duration = Number(value);
-  if (Number.isNaN(duration)) {
-    return `${safeString(value)} seconds`;
-  }
-
-  return `${Math.round(duration)} seconds`;
+      return normalized;
+    });
 }
 
 function formatDisplayDate(value) {
@@ -74,16 +49,6 @@ function formatDisplayDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return safeString(value);
   return date.toISOString().slice(0, 10);
-}
-
-function getSafeFilenamePart(value, fallback) {
-  const safeValue = safeString(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return safeValue || fallback;
 }
 
 export function formatNotesAsTxt(notes) {
@@ -121,46 +86,9 @@ export function formatNotesAsJson(notes) {
   return JSON.stringify(normalizeExportNotes(notes), null, 2);
 }
 
-export function formatNoteAsTxt(note) {
-  const normalized = normalizeExportNote(note);
-  const lines = [
-    `Title: ${normalized.title || "Untitled"}`,
-    `Category: ${normalized.category || "none"}`,
-    `Created: ${formatDisplayDate(normalized.created_at)}`,
-    "",
-    "Content:",
-    "",
-    normalized.content || "",
-  ];
-
-  if (normalized.voice_note) {
-    lines.push(
-      "",
-      "Voice Note: Metadata only (raw audio not exported)",
-      `Voice Duration: ${normalized.voice_note.duration ?? "Not available"}`,
-      `Voice Audio URL: ${normalized.voice_note.audio_url || "Not available"}`,
-    );
-  }
-
-  return lines.join("\n");
-}
-
-export function formatNoteAsJson(note) {
-  return JSON.stringify(normalizeExportNote(note), null, 2);
-}
-
 export function getExportFilename(format) {
   const date = new Date().toISOString().slice(0, 10);
   return `keeper-notes-${date}.${format}`;
-}
-
-export function getNoteExportFilename(note, format) {
-  const date = new Date().toISOString().slice(0, 10);
-  const normalized = normalizeExportNote(note);
-  const title = getSafeFilenamePart(normalized.title, "untitled-note");
-  const extension = getSafeFilenamePart(format, "txt");
-
-  return `keeper-note-${title}-${date}.${extension}`;
 }
 
 export function downloadTextFile({ content, filename, mimeType }) {
@@ -177,122 +105,113 @@ export function downloadTextFile({ content, filename, mimeType }) {
   URL.revokeObjectURL(url);
 }
 
-export function buildNotePdfHtml(note) {
-  const [normalizedNote] = normalizeExportNotes([note]);
 
-  if (!normalizedNote) {
-    throw new Error("No note available to export.");
-  }
-
-  const title = normalizedNote.title || "Untitled";
-  const category = normalizedNote.category || "none";
-  const createdDate = formatDisplayDate(normalizedNote.created_at);
-  const updatedDate = formatDisplayDate(normalizedNote.updated_at);
-  const content = normalizedNote.content || "";
-  const voiceNoteHtml = normalizedNote.voice_note
-    ? `
-      <section class="voice-note">
-        <h2>Voice Note Attached</h2>
-        <p><strong>Duration:</strong> ${escapeHtml(
-          formatDurationSeconds(normalizedNote.voice_note.duration),
-        )}</p>
-      </section>`
-    : "";
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title)} - Keeper Note</title>
-    <style>
-      @page { margin: 0.75in; }
-      * { box-sizing: border-box; }
-      body {
-        color: #202124;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 14px;
-        line-height: 1.5;
-        margin: 0;
-      }
-      main { max-width: 760px; margin: 0 auto; }
-      h1 {
-        border-bottom: 2px solid #f5ba13;
-        font-size: 28px;
-        line-height: 1.2;
-        margin: 0 0 20px;
-        padding-bottom: 12px;
-      }
-      dl {
-        display: grid;
-        grid-template-columns: 120px 1fr;
-        gap: 8px 16px;
-        margin: 0 0 24px;
-      }
-      dt { color: #5f6368; font-weight: 700; }
-      dd { margin: 0; }
-      h2 {
-        color: #5f6368;
-        font-size: 14px;
-        letter-spacing: 0.08em;
-        margin: 0 0 8px;
-        text-transform: uppercase;
-      }
-      .content, .voice-note {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        margin-top: 16px;
-        padding: 16px;
-      }
-      .note-content {
-        margin: 0;
-        min-height: 120px;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-      .voice-note p { margin: 0; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>${escapeHtml(title)}</h1>
-      <dl>
-        <dt>Category</dt>
-        <dd>${escapeHtml(category)}</dd>
-        <dt>Created date</dt>
-        <dd>${escapeHtml(createdDate)}</dd>
-        <dt>Updated date</dt>
-        <dd>${escapeHtml(updatedDate)}</dd>
-      </dl>
-      <section class="content">
-        <h2>Content</h2>
-        <p class="note-content">${escapeHtml(content)}</p>
-      </section>
-      ${voiceNoteHtml}
-    </main>
-  </body>
-</html>`;
+function escapePdfText(value) {
+  return safeString(value)
+    .replace(/[^\x20-\x7E]/g, "-")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 }
 
-export function printNoteAsPdf(note) {
-  const html = buildNotePdfHtml(note);
-  const printWindow = window.open("", "_blank");
+function wrapPdfLine(line, maxLength = 82) {
+  const text = safeString(line);
+  if (text.length <= maxLength) return [text];
 
-  if (!printWindow) {
-    throw new Error("Unable to open the print window.");
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    if (!current) {
+      current = word;
+      return;
+    }
+
+    if (`${current} ${word}`.length <= maxLength) {
+      current = `${current} ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  });
+
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [text];
+}
+
+function buildPdfLines(notes) {
+  return formatNotesAsTxt(notes)
+    .split("\n")
+    .flatMap((line) => wrapPdfLine(line));
+}
+
+function buildPdfDocument(lines) {
+  const linesPerPage = 48;
+  const pages = [];
+
+  for (let index = 0; index < lines.length; index += linesPerPage) {
+    pages.push(lines.slice(index, index + linesPerPage));
   }
 
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pages
+      .map((_, index) => `${3 + index * 2} 0 R`)
+      .join(" ")}] /Count ${pages.length} >>`,
+  ];
 
-  const printPdf = () => {
-    printWindow.print();
-  };
+  pages.forEach((pageLines, index) => {
+    const pageObjectNumber = 3 + index * 2;
+    const contentObjectNumber = pageObjectNumber + 1;
+    const stream = [
+      "BT",
+      "/F1 11 Tf",
+      "50 780 Td",
+      "14 TL",
+      ...pageLines.map((line) => `(${escapePdfText(line)}) Tj T*`),
+      "ET",
+    ].join("\n");
 
-  if (printWindow.document.readyState === "complete") {
-    printPdf();
-  } else {
-    printWindow.addEventListener("load", printPdf, { once: true });
-  }
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentObjectNumber} 0 R >>`,
+    );
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return pdf;
+}
+
+export function formatNotesAsPdf(notes) {
+  const lines = buildPdfLines(notes);
+  return new Blob([buildPdfDocument(lines)], { type: "application/pdf" });
+}
+
+export function downloadBlobFile({ blob, filename }) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
 }

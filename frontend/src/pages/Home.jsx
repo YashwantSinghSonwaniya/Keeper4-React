@@ -10,7 +10,6 @@ import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
 import VoiceRecorder from "../components/VoiceRecorder";
 import VoiceNotePlayer from "../components/VoiceNotePlayer";
 import useSpeechReader from "../hooks/useSpeechReader";
-import { printNoteAsPdf } from "../exportNotes";
 
 import {
   getNotes,
@@ -45,6 +44,15 @@ import SortableNote from "../components/SortableNote";
 import GuestImportModal from "../components/GuestImportModal";
 
 import CATEGORIES from "../categories";
+import {
+  downloadBlobFile,
+  downloadTextFile,
+  formatNotesAsJson,
+  formatNotesAsPdf,
+  formatNotesAsTxt,
+  getExportFilename,
+  normalizeExportNotes,
+} from "../exportNotes";
 
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
@@ -97,7 +105,24 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
+
+  // ✅ Single source of truth for which note's More menu is open.
+  // Guarantees only ONE menu can ever be open at a time.
+  const [openMenuNoteId, setOpenMenuNoteId] = useState(null);
+
   const speechReader = useSpeechReader();
+
+  function openNoteMenu(id) {
+    setOpenMenuNoteId(id);
+  }
+
+  function closeNoteMenu(id) {
+    setOpenMenuNoteId((current) => (current === id ? null : current));
+  }
+
+  function closeAllNoteMenus() {
+    setOpenMenuNoteId(null);
+  }
 
   function getGuestPromptUserKey() {
     if (!user) return null;
@@ -273,6 +298,11 @@ function Home({ user, isLoggedIn, onLogout }) {
     };
   }, [modalOpen, showGuestVoiceUpgrade]);
 
+  // ✅ Close any open note menu when the edit modal opens.
+  useEffect(() => {
+    if (modalOpen) closeAllNoteMenus();
+  }, [modalOpen]);
+
   const filteredNotes = notes.filter((note) => {
     const q = searchQuery.toLowerCase();
     const title = (note.title || "").toLowerCase();
@@ -333,6 +363,8 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function confirmDelete(id) {
+    // ✅ Always close menus before showing the confirm/deleting a note.
+    closeAllNoteMenus();
     if (skipDeleteConfirm) {
       actuallyDelete(id);
     } else {
@@ -344,6 +376,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     if (speechReader.activeId === id || speechReader.activeId === `modal-${id}`) {
       speechReader.stop();
     }
+
+    closeAllNoteMenus();
 
     const sound = new Audio("/sounds/deleteButton.wav");
     sound.currentTime = 0;
@@ -367,6 +401,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function editNoteHandler(id) {
+    closeAllNoteMenus();
     let note;
     if (isLoggedIn) {
       note = notes.find((n) => n.id === id);
@@ -388,6 +423,58 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalVoiceDeleted(false);
     setModalRecorderKey((prev) => prev + 1);
     setModalOpen(true);
+  }
+
+  function getNoteByActionId(id) {
+    if (isLoggedIn) {
+      return notes.find((n) => n.id === id);
+    }
+
+    // Guest IDs are prefixed like "pinned-5" or "unpinned-3".
+    const globalIndex = parseInt(String(id).split("-")[1], 10);
+    return notes[globalIndex];
+  }
+
+  function handleExportNote(id, format) {
+    const note = getNoteByActionId(id);
+
+    if (!note) {
+      toast.error("Unable to find that note for export.");
+      return;
+    }
+
+    const sourceNotes = [note];
+    const normalizedNotes = normalizeExportNotes(sourceNotes);
+
+    if (normalizedNotes.length === 0) {
+      toast.error("No note data available to export.");
+      return;
+    }
+
+    try {
+      if (format === "pdf") {
+        downloadBlobFile({
+          blob: formatNotesAsPdf(sourceNotes),
+          filename: getExportFilename(format),
+        });
+      } else {
+        const isJson = format === "json";
+        downloadTextFile({
+          content: isJson
+            ? formatNotesAsJson(sourceNotes)
+            : formatNotesAsTxt(sourceNotes),
+          filename: getExportFilename(format),
+          mimeType: isJson
+            ? "application/json;charset=utf-8"
+            : "text/plain;charset=utf-8",
+        });
+      }
+
+      toast.success(`Exported note as ${format.toUpperCase()}.`);
+    } catch (err) {
+      console.error("Export note failed:", err);
+      toast.error("Failed to export note.");
+    }
   }
 
   function handleModalRecordingComplete(recording) {
@@ -629,13 +716,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         const res = await togglePinNote(id);
         setNotes((prev) =>
           prev.map((n) =>
-            n.id === id
-              ? {
-                  ...n,
-                  ...res.data,
-                  voice_note: res.data.voice_note ?? n.voice_note,
-                }
-              : n,
+            n.id === id ? { ...n, ...res.data, voice_note: n.voice_note } : n,
           ),
         );
         toast.success(
@@ -668,33 +749,14 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function handleReadAloud(id, note) {
+    // ✅ Entering Read mode must close any open menu.
+    closeAllNoteMenus();
     speechReader.toggleNote(id, note);
   }
 
   function handleModalReadAloud() {
     if (!modalNoteId) return;
     speechReader.toggleNote(`modal-${modalNoteId}`, modalNote);
-  }
-
-  function handleExportPdf(id) {
-    const guestNoteIndex = parseInt(String(id).split("-")[1], 10);
-    const noteToExport = notes.find((noteItem) => {
-      if (isLoggedIn) return noteItem.id === id;
-      return getGlobalNoteIndex(noteItem) === guestNoteIndex;
-    });
-
-    if (!noteToExport) {
-      toast.error("Unable to find this note for PDF export.");
-      return;
-    }
-
-    try {
-      printNoteAsPdf(noteToExport);
-      toast.success("PDF export opened. Choose Save as PDF in the print dialog.");
-    } catch (err) {
-      console.error("PDF export failed:", err);
-      toast.error("Failed to export note as PDF.");
-    }
   }
 
   // ✅ renderNote: use SortableNote when logged in, plain Note for guests
@@ -725,8 +787,11 @@ function Home({ user, isLoggedIn, onLogout }) {
           onPin={togglePin}
           onCategoryChange={changeCategory}
           onReadAloud={handleReadAloud}
-          onExportPdf={handleExportPdf}
+          onExport={handleExportNote}
           speechState={speechReader.getNoteSpeechState(id)}
+          openMenuId={openMenuNoteId}
+          onOpenMenu={openNoteMenu}
+          onCloseMenu={closeNoteMenu}
         />
       );
     }
@@ -748,8 +813,11 @@ function Home({ user, isLoggedIn, onLogout }) {
         onPin={togglePin}
         onCategoryChange={changeCategory}
         onReadAloud={handleReadAloud}
-        onExportPdf={handleExportPdf}
+        onExport={handleExportNote}
         speechState={speechReader.getNoteSpeechState(id)}
+        openMenuId={openMenuNoteId}
+        onOpenMenu={openNoteMenu}
+        onCloseMenu={closeNoteMenu}
       />
     );
   }

@@ -37,8 +37,12 @@ function SortableNote(props) {
         onPin={props.onPin}
         onCategoryChange={props.onCategoryChange}
         onReadAloud={props.onReadAloud}
-        onExportPdf={props.onExportPdf}
+        onExport={props.onExport}
         speechState={props.speechState}
+        /* NEW: single-open-menu controller props */
+        openMenuId={props.openMenuId}
+        onOpenMenu={props.onOpenMenu}
+        onCloseMenu={props.onCloseMenu}
       />
     </div>
   );
