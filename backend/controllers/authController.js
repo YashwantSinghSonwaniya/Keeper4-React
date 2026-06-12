@@ -4,42 +4,140 @@ const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 require("dotenv").config();
 
-// ✅ Google OAuth2 client — 'postmessage' is the required redirect_uri for popup flows
+// ═══════════════════════════════════════════════════════════════════════
+//  VALIDATION & NORMALIZATION HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize an email address.
+ * Must be called before every INSERT and every lookup.
+ */
+function normalizeEmail(raw) {
+  return String(raw).trim().toLowerCase();
+}
+
+/**
+ * Validate email format.
+ * Rejects: "abc"  "1@g"  "test@"  "@gmail"  "a b@c.com"
+ * Accepts: "user@example.com"  "first.last+tag@sub.domain.co.uk"
+ */
+function isValidEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  if (/\s/.test(email)) return false;
+
+  const segments = email.split("@");
+  if (segments.length !== 2) return false;
+
+  const [local, domain] = segments;
+  if (!local.length || !domain.length) return false;
+
+  if (local.startsWith(".") || local.endsWith(".")) return false;
+  if (local.includes("..")) return false;
+  if (local.length > 64) return false;
+  if (!/^[a-zA-Z0-9._%+\-!#$&'*/=?^`{|}~]+$/.test(local)) return false;
+
+  const labels = domain.split(".");
+  if (labels.length < 2) return false;
+  if (labels.some((l) => l.length === 0)) return false;
+  const tld = labels[labels.length - 1];
+  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return false;
+  if (domain.length > 255) return false;
+  if (!/^[a-zA-Z0-9.\-]+$/.test(domain)) return false;
+
+  return true;
+}
+
+/**
+ * Validate password — NIST 800-63B aligned.
+ * Returns an error string if invalid, or null if valid.
+ *
+ * ✅ Minimum 8 characters  (NIST 800-63B minimum)
+ * ✅ Maximum 128 characters (prevents bcrypt silent truncation abuse at 72 bytes)
+ * ✅ Whitespace-only rejected (accidental input protection)
+ *
+ * ❌ NO complexity rules enforced — NIST 800-63B explicitly recommends against
+ *    mandatory uppercase / lowercase / digit / symbol requirements.
+ *    Mandatory complexity produces predictable patterns like "Password1!" which
+ *    are weaker than simple long passphrases. Length drives entropy, not variety.
+ */
+function validatePassword(password) {
+  if (!password || typeof password !== "string") {
+    return "Password is required.";
+  }
+  if (password.trim().length === 0) {
+    return "Password cannot be blank or contain only spaces.";
+  }
+  if (password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
+  if (password.length > 128) {
+    return "Password must be 128 characters or fewer.";
+  }
+  return null; // valid
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Google OAuth2 client
+//  'postmessage' = required redirect_uri for popup auth-code flows
+// ═══════════════════════════════════════════════════════════════════════
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   "postmessage"
 );
 
-// ✅ REGISTER
+// ────────────────────────────────────────────────────────────────────────
+// REGISTER
+// ────────────────────────────────────────────────────────────────────────
 async function register(req, res) {
   const { name, email, password } = req.body;
 
+  // ── Presence check ───────────────────────────────────────────────────
   if (!name || !email || !password) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
-  if (password.length < 6) {
-    return res
-      .status(400)
-      .json({ error: "Password must be at least 6 characters." });
+  // ── Normalize ────────────────────────────────────────────────────────
+  const trimmedName     = String(name).trim();
+  const normalizedEmail = normalizeEmail(email);
+
+  // ── Name validation ──────────────────────────────────────────────────
+  if (!trimmedName) {
+    return res.status(400).json({ error: "Name cannot be blank." });
+  }
+  if (trimmedName.length > 100) {
+    return res.status(400).json({ error: "Name must be 100 characters or fewer." });
+  }
+
+  // ── Email format validation ──────────────────────────────────────────
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({
+      error: "Please enter a valid email address (e.g. user@example.com).",
+    });
+  }
+
+  // ── Password validation (Phase 2) ────────────────────────────────────
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
 
   try {
+    // ── Duplicate check against normalized email ──────────────────────
     const existing = await pool.query(
       "SELECT id FROM users WHERE email = $1",
-      [email]
+      [normalizedEmail]
     );
 
     if (existing.rows.length > 0) {
-      return res.status(400).json({ error: "Email already registered." });
+      return res.status(400).json({ error: "An account with this email already exists." });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
       "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email",
-      [name, email, hashedPassword]
+      [trimmedName, normalizedEmail, hashedPassword]
     );
 
     const user = result.rows[0];
@@ -61,7 +159,9 @@ async function register(req, res) {
   }
 }
 
-// ✅ LOGIN
+// ────────────────────────────────────────────────────────────────────────
+// LOGIN
+// ────────────────────────────────────────────────────────────────────────
 async function login(req, res) {
   const { email, password } = req.body;
 
@@ -69,10 +169,13 @@ async function login(req, res) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
+  // Normalize before lookup so "User@Gmail.COM" finds "user@gmail.com"
+  const normalizedEmail = normalizeEmail(email);
+
   try {
     const result = await pool.query(
       "SELECT * FROM users WHERE email = $1",
-      [email]
+      [normalizedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -81,7 +184,7 @@ async function login(req, res) {
 
     const user = result.rows[0];
 
-    // ✅ Google-only accounts have no password — give a helpful message
+    // Google-only accounts have no password set
     if (!user.password) {
       return res.status(400).json({
         error:
@@ -111,7 +214,9 @@ async function login(req, res) {
   }
 }
 
-// ✅ GOOGLE AUTH — handles both sign-in and sign-up in one endpoint
+// ────────────────────────────────────────────────────────────────────────
+// GOOGLE AUTH  (sign-in and sign-up in one endpoint)
+// ────────────────────────────────────────────────────────────────────────
 async function googleAuth(req, res) {
   const { code } = req.body;
 
@@ -120,46 +225,44 @@ async function googleAuth(req, res) {
   }
 
   try {
-    // Step 1: Exchange the one-time authorization code for tokens
+    // Exchange the one-time authorization code for tokens
     const { tokens } = await googleClient.getToken(code);
 
-    // Step 2: Verify and decode the ID token — confirms the token is genuine
+    // Verify and decode the ID token
     const ticket = await googleClient.verifyIdToken({
       idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { sub: googleId, email, name, picture } = payload;
+    const { sub: googleId, name, picture } = payload;
+    const normalizedEmail = normalizeEmail(payload.email);
 
     let user;
 
-    // Step 3: Check if a user with this Google ID already exists
+    // Check if a user with this Google ID already exists
     const byGoogleId = await pool.query(
       "SELECT * FROM users WHERE google_id = $1",
       [googleId]
     );
 
     if (byGoogleId.rows.length > 0) {
-      // Returning Google user — update avatar if it changed
       user = byGoogleId.rows[0];
-
       if (picture && user.avatar !== picture) {
-        await pool.query(
-          "UPDATE users SET avatar = $1 WHERE id = $2",
-          [picture, user.id]
-        );
+        await pool.query("UPDATE users SET avatar = $1 WHERE id = $2", [
+          picture,
+          user.id,
+        ]);
         user.avatar = picture;
       }
     } else {
-      // Step 4: Check if this email already exists (existing email/password user)
       const byEmail = await pool.query(
         "SELECT * FROM users WHERE email = $1",
-        [email]
+        [normalizedEmail]
       );
 
       if (byEmail.rows.length > 0) {
-        // Link the Google account to the existing email/password account
+        // Link Google to the existing email/password account
         user = byEmail.rows[0];
         await pool.query(
           "UPDATE users SET google_id = $1, avatar = COALESCE($2, avatar) WHERE id = $3",
@@ -168,16 +271,15 @@ async function googleAuth(req, res) {
         user.google_id = googleId;
         if (picture) user.avatar = picture;
       } else {
-        // Step 5: Brand-new user — create account automatically
+        // Brand-new user — create account automatically
         const result = await pool.query(
           "INSERT INTO users (name, email, google_id, avatar) VALUES ($1, $2, $3, $4) RETURNING *",
-          [name, email, googleId, picture || null]
+          [String(name).trim(), normalizedEmail, googleId, picture || null]
         );
         user = result.rows[0];
       }
     }
 
-    // Step 6: Issue our own JWT
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
       process.env.JWT_SECRET,
@@ -200,7 +302,9 @@ async function googleAuth(req, res) {
   }
 }
 
-// ✅ FORGOT PASSWORD
+// ────────────────────────────────────────────────────────────────────────
+// FORGOT PASSWORD
+// ────────────────────────────────────────────────────────────────────────
 async function forgotPassword(req, res) {
   const { email } = req.body;
 
@@ -208,10 +312,12 @@ async function forgotPassword(req, res) {
     return res.status(400).json({ error: "Email is required." });
   }
 
+  const normalizedEmail = normalizeEmail(email);
+
   try {
     const result = await pool.query(
       "SELECT id FROM users WHERE email = $1",
-      [email]
+      [normalizedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -227,7 +333,9 @@ async function forgotPassword(req, res) {
   }
 }
 
-// ✅ CHANGE PASSWORD
+// ────────────────────────────────────────────────────────────────────────
+// CHANGE PASSWORD
+// ────────────────────────────────────────────────────────────────────────
 async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body;
 
@@ -235,21 +343,20 @@ async function changePassword(req, res) {
     return res.status(400).json({ error: "All fields are required." });
   }
 
-  if (newPassword.length < 6) {
-    return res.status(400).json({
-      error: "New password must be at least 6 characters.",
-    });
+  // ── Phase 2: Validate the new password against current rules ─────────
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [req.user.id]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [
+      req.user.id,
+    ]);
 
     const user = result.rows[0];
 
-    // ✅ Google-only users have no password
+    // Google-only accounts have no password
     if (!user.password) {
       return res.status(400).json({
         error: "Google accounts don't use passwords and cannot be changed here.",
@@ -257,19 +364,16 @@ async function changePassword(req, res) {
     }
 
     const validPassword = await bcrypt.compare(currentPassword, user.password);
-
     if (!validPassword) {
-      return res.status(400).json({
-        error: "Current password is incorrect.",
-      });
+      return res.status(400).json({ error: "Current password is incorrect." });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await pool.query(
-      "UPDATE users SET password = $1 WHERE id = $2",
-      [hashedPassword, req.user.id]
-    );
+    await pool.query("UPDATE users SET password = $1 WHERE id = $2", [
+      hashedPassword,
+      req.user.id,
+    ]);
 
     res.json({ message: "Password changed successfully!" });
   } catch (err) {
@@ -278,31 +382,30 @@ async function changePassword(req, res) {
   }
 }
 
-// ✅ DELETE ACCOUNT
+// ────────────────────────────────────────────────────────────────────────
+// DELETE ACCOUNT
+// ────────────────────────────────────────────────────────────────────────
 async function deleteAccount(req, res) {
   const { password } = req.body;
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [req.user.id]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [
+      req.user.id,
+    ]);
 
     const user = result.rows[0];
 
-    // ✅ Google-only users have no password — JWT authentication is sufficient
+    // Google-only accounts: JWT authentication is sufficient proof of identity
     if (!user.password) {
       await pool.query("DELETE FROM users WHERE id = $1", [req.user.id]);
       return res.json({ message: "Account deleted successfully." });
     }
 
-    // Email/password users still require password confirmation
     if (!password) {
       return res.status(400).json({ error: "Password is required." });
     }
 
     const validPassword = await bcrypt.compare(password, user.password);
-
     if (!validPassword) {
       return res.status(400).json({ error: "Incorrect password." });
     }
@@ -316,7 +419,9 @@ async function deleteAccount(req, res) {
   }
 }
 
-// ✅ UPDATE PROFILE
+// ────────────────────────────────────────────────────────────────────────
+// UPDATE PROFILE
+// ────────────────────────────────────────────────────────────────────────
 async function updateProfile(req, res) {
   const { name } = req.body;
 

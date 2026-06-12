@@ -22,6 +22,23 @@ import {
   normalizeExportNotes,
 } from "../exportNotes";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Password validator — NIST 800-63B aligned, mirrors backend rules.
+// Returns an error string if invalid, or null if valid.
+// ─────────────────────────────────────────────────────────────────────────────
+function validatePassword(password) {
+  if (!password || password.trim().length === 0) {
+    return "Password cannot be blank or contain only spaces.";
+  }
+  if (password.length < 8) {
+    return "New password must be at least 8 characters.";
+  }
+  if (password.length > 128) {
+    return "New password must be 128 characters or fewer.";
+  }
+  return null;
+}
+
 function Settings({ user, isLoggedIn, onLogout }) {
   const history = useHistory();
 
@@ -285,6 +302,14 @@ function Settings({ user, isLoggedIn, onLogout }) {
   async function handleChangePassword(e) {
     e.preventDefault();
 
+    // ── Phase 2: Validate the new password before sending ───────────────
+    const passwordError = validatePassword(passwordForm.newPassword);
+    if (passwordError) {
+      toast.error(passwordError);
+      return;
+    }
+
+    // Check match only after the new password itself is valid
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       toast.error("New passwords don't match.");
       return;
@@ -344,7 +369,6 @@ function Settings({ user, isLoggedIn, onLogout }) {
       toast.success("Name updated successfully! 🎉");
       setShowEditName(false);
 
-      // ✅ Wait 1.5 seconds so toast is visible before reload
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -410,7 +434,8 @@ function Settings({ user, isLoggedIn, onLogout }) {
               <div className="settings-item-info">
                 <p className="settings-item-label">Speech Rate</p>
                 <p className="settings-item-desc">
-                  Choose how quickly notes are read aloud. Current: {speechSettings.rate.toFixed(1)}x
+                  Choose how quickly notes are read aloud. Current:{" "}
+                  {speechSettings.rate.toFixed(1)}x
                 </p>
               </div>
               <input
@@ -429,7 +454,8 @@ function Settings({ user, isLoggedIn, onLogout }) {
               <div className="settings-item-info">
                 <p className="settings-item-label">Pitch</p>
                 <p className="settings-item-desc">
-                  Adjust the voice pitch. Current: {speechSettings.pitch.toFixed(1)}
+                  Adjust the voice pitch. Current:{" "}
+                  {speechSettings.pitch.toFixed(1)}
                 </p>
               </div>
               <input
@@ -455,7 +481,9 @@ function Settings({ user, isLoggedIn, onLogout }) {
               </div>
               <select
                 value={speechSettings.voiceURI}
-                onChange={(e) => updateSpeechSetting("voiceURI", e.target.value)}
+                onChange={(e) =>
+                  updateSpeechSetting("voiceURI", e.target.value)
+                }
                 disabled={!speechSupported || speechVoices.length === 0}
                 className="settings-select"
               >
@@ -573,6 +601,10 @@ function Settings({ user, isLoggedIn, onLogout }) {
                       required
                       className="settings-input"
                     />
+                    {/* ✅ Phase 2: Password requirements hint */}
+                    <p className="settings-item-desc">
+                      Use 8–128 characters. No special characters required.
+                    </p>
                     <input
                       type="password"
                       placeholder="Confirm new password"
@@ -610,9 +642,12 @@ function Settings({ user, isLoggedIn, onLogout }) {
               <div className="settings-item-info">
                 <p className="settings-item-label">Export notes</p>
                 <p className="settings-item-desc">
-                  Download {isLoggedIn
+                  Download{" "}
+                  {isLoggedIn
                     ? "your account notes"
-                    : "guest notes from this browser"} as readable TXT or backup JSON. Voice note exports include metadata only.
+                    : "guest notes from this browser"}{" "}
+                  as readable TXT or backup JSON. Voice note exports include
+                  metadata only.
                 </p>
               </div>
               <div className="export-actions">
@@ -652,7 +687,9 @@ function Settings({ user, isLoggedIn, onLogout }) {
             </h3>
             <div className="settings-item settings-item-col">
               <div className="settings-item-info">
-                <p className="settings-item-label">Guest notes stored locally</p>
+                <p className="settings-item-label">
+                  Guest notes stored locally
+                </p>
                 <p className="settings-item-desc">
                   {guestNotesCount > 0
                     ? `You have ${guestNotesCount} guest note${guestNotesCount === 1 ? "" : "s"} stored in this browser.`
@@ -679,9 +716,12 @@ function Settings({ user, isLoggedIn, onLogout }) {
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <p className="settings-item-label">Disable automatic guest import prompts</p>
+                <p className="settings-item-label">
+                  Disable automatic guest import prompts
+                </p>
                 <p className="settings-item-desc">
-                  Turn this on to stop automatic reminders when guest notes exist.
+                  Turn this on to stop automatic reminders when guest notes
+                  exist.
                 </p>
               </div>
               <label className="settings-toggle">
@@ -713,8 +753,8 @@ function Settings({ user, isLoggedIn, onLogout }) {
                       Delete account
                     </p>
                     <p className="settings-item-desc">
-                      Permanently delete your account and all notes. This cannot
-                      be undone.
+                      Permanently delete your account and all notes. This
+                      cannot be undone.
                     </p>
                   </div>
                   <span className="material-icons settings-chevron danger-chevron">
@@ -728,8 +768,8 @@ function Settings({ user, isLoggedIn, onLogout }) {
                     className="settings-form"
                   >
                     <p className="danger-warning">
-                      ⚠️ This will permanently delete your account and all your
-                      notes. Enter your password to confirm.
+                      ⚠️ This will permanently delete your account and all
+                      your notes. Enter your password to confirm.
                     </p>
                     <input
                       type="password"

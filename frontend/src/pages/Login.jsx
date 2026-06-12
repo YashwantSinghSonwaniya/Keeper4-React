@@ -3,6 +3,34 @@ import { Link, useHistory } from "react-router-dom";
 import { loginUser, googleAuth } from "../api";
 import { useGoogleLogin } from "@react-oauth/google";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Client-side email validator — mirrors the backend rules exactly so the user
+// gets instant feedback without a round trip.
+// ─────────────────────────────────────────────────────────────────────────────
+function isValidEmailFormat(email) {
+  if (!email || typeof email !== "string") return false;
+  if (/\s/.test(email)) return false;
+
+  const segments = email.split("@");
+  if (segments.length !== 2) return false;
+
+  const [local, domain] = segments;
+  if (!local.length || !domain.length) return false;
+
+  if (local.startsWith(".") || local.endsWith(".") || local.includes("..")) return false;
+  if (local.length > 64) return false;
+  if (!/^[a-zA-Z0-9._%+\-!#$&'*/=?^`{|}~]+$/.test(local)) return false;
+
+  const labels = domain.split(".");
+  if (labels.length < 2 || labels.some((l) => l.length === 0)) return false;
+  const tld = labels[labels.length - 1];
+  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return false;
+  if (domain.length > 255) return false;
+  if (!/^[a-zA-Z0-9.\-]+$/.test(domain)) return false;
+
+  return true;
+}
+
 function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -19,7 +47,11 @@ function Login({ onLogin }) {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      // Lowercase the email as the user types — avoids surprises on submit
+      [name]: name === "email" ? value.toLowerCase() : value,
+    }));
   }
 
   // ✅ Google OAuth — triggers popup, receives one-time auth code
@@ -29,7 +61,6 @@ function Login({ onLogin }) {
       setGoogleLoading(true);
       setError("");
       try {
-        // Send the code to our backend for secure token exchange
         const res = await googleAuth({ code: codeResponse.code });
 
         localStorage.setItem("token", res.data.token);
@@ -57,10 +88,23 @@ function Login({ onLogin }) {
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
+
+    // ── Normalize before sending ──────────────────────────────────────
+    const normalizedEmail = form.email.trim().toLowerCase();
+
+    // ── Client-side format validation (instant feedback, no round trip) ─
+    if (!isValidEmailFormat(normalizedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await loginUser(form);
+      const res = await loginUser({
+        email: normalizedEmail,
+        password: form.password,
+      });
 
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
@@ -85,7 +129,8 @@ function Login({ onLogin }) {
 
     try {
       const { forgotPassword } = await import("../api");
-      await forgotPassword({ email: forgotEmail });
+      // Normalize the forgot-password email too
+      await forgotPassword({ email: forgotEmail.trim().toLowerCase() });
       setForgotMsg("If this email exists, a reset link has been sent.");
     } catch (err) {
       setForgotMsg(err.response?.data?.error || "Something went wrong.");
@@ -97,7 +142,6 @@ function Login({ onLogin }) {
       <div className="auth-card">
         <h2>Welcome Back</h2>
 
-        {/* ✅ Google button now triggers the OAuth popup */}
         <button
           type="button"
           className="google-btn"
@@ -134,11 +178,7 @@ function Login({ onLogin }) {
 
               {error && <p className="error">{error}</p>}
 
-              <button
-                type="submit"
-                className="auth-btn"
-                disabled={loading}
-              >
+              <button type="submit" className="auth-btn" disabled={loading}>
                 {loading ? "Logging in..." : "Login"}
               </button>
             </form>
@@ -151,8 +191,7 @@ function Login({ onLogin }) {
             </p>
 
             <p>
-              Don't have an account?{" "}
-              <Link to="/register">Register</Link>
+              Don't have an account? <Link to="/register">Register</Link>
             </p>
           </>
         ) : (
@@ -163,13 +202,11 @@ function Login({ onLogin }) {
                 type="email"
                 placeholder="Enter your email"
                 value={forgotEmail}
-                onChange={(e) => setForgotEmail(e.target.value)}
+                onChange={(e) => setForgotEmail(e.target.value.toLowerCase())}
                 required
               />
 
-              {forgotMsg && (
-                <p className="forgot-msg">{forgotMsg}</p>
-              )}
+              {forgotMsg && <p className="forgot-msg">{forgotMsg}</p>}
 
               <button type="submit" className="auth-btn">
                 Send Reset Link
