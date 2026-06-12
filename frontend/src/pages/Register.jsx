@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { Link, useHistory } from "react-router-dom";
-import { registerUser } from "../api";
+import { registerUser, googleAuth } from "../api";
+import { useGoogleLogin } from "@react-oauth/google";
 
 function Register({ onLogin }) {
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -17,6 +19,37 @@ function Register({ onLogin }) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   }
+
+  // ✅ Google OAuth — same endpoint handles sign-up and sign-in automatically
+  const handleGoogleRegister = useGoogleLogin({
+    flow: "auth-code",
+    onSuccess: async (codeResponse) => {
+      setGoogleLoading(true);
+      setError("");
+      try {
+        const res = await googleAuth({ code: codeResponse.code });
+
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
+
+        const userKey = res.data.user.id
+          ? `user_${res.data.user.id}`
+          : `user_${encodeURIComponent(res.data.user.email || "unknown")}`;
+        sessionStorage.setItem(`guestImportPromptPending_${userKey}`, "true");
+        sessionStorage.setItem(`guestImportPromptHandled_${userKey}`, "false");
+
+        onLogin(res.data.user);
+        history.push("/");
+      } catch (err) {
+        setError(err.response?.data?.error || "Google sign-up failed. Please try again.");
+      } finally {
+        setGoogleLoading(false);
+      }
+    },
+    onError: () => {
+      setError("Google sign-up was cancelled or failed. Please try again.");
+    },
+  });
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -32,7 +65,6 @@ function Register({ onLogin }) {
     try {
       const res = await registerUser(form);
 
-      // ✅ Save token and user to localStorage
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("loggedInUser", JSON.stringify(res.data.user));
 
@@ -51,15 +83,20 @@ function Register({ onLogin }) {
     }
   }
 
-
   return (
     <div className="auth-page">
       <div className="auth-card">
         <h2>Create Account</h2>
 
-        <button type="button" className="google-btn">
+        {/* ✅ Google button now triggers the OAuth popup */}
+        <button
+          type="button"
+          className="google-btn"
+          onClick={() => handleGoogleRegister()}
+          disabled={googleLoading}
+        >
           <img src="/images/google-icon.jpg" alt="Google logo" />
-          Continue with Google
+          {googleLoading ? "Connecting..." : "Continue with Google"}
         </button>
 
         <div className="divider">
@@ -103,7 +140,6 @@ function Register({ onLogin }) {
           Already have an account? <Link to="/login">Login</Link>
         </p>
       </div>
-
     </div>
   );
 }
