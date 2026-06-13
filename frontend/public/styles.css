@@ -2260,6 +2260,14 @@ button:disabled {
 }
 
 /* ======= SPEECH READING ======= */
+/* ======= SPEECH READING ======= */
+
+/*
+  ✅ CLS FIX: animate ONLY box-shadow, never transform/translateY.
+  Inside a CSS multi-column (Masonry) container, applying a transform
+  to a column item can disturb column balancing and cause sibling notes
+  to shift. A pure box-shadow glow is visually identical but layout-safe.
+*/
 .note-reading {
   box-shadow: 0 8px 24px rgba(245, 186, 19, 0.28);
   animation: noteReadingGlow 1.8s ease-in-out infinite;
@@ -2267,15 +2275,24 @@ button:disabled {
 
 @keyframes noteReadingGlow {
   0%, 100% {
-    transform: translateY(0);
     box-shadow: 0 8px 24px rgba(245, 186, 19, 0.18);
   }
   50% {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 28px rgba(245, 186, 19, 0.34);
+    box-shadow: 0 10px 30px rgba(245, 186, 19, 0.40);
   }
 }
 
+/*
+  ✅ CLS FIX: The reading indicator is ALWAYS in the DOM and ALWAYS reserves
+  its full vertical footprint. We never mount/unmount it, so the note height
+  is constant and the columns layout never re-balances.
+
+  Inactive state: invisible + non-interactive, but space is still reserved.
+  Active state:   fully visible.
+
+  We deliberately reserve a fixed block here (display:flex with a stable
+  height) rather than collapsing it, which is exactly what prevents the jump.
+*/
 .reading-indicator {
   display: inline-flex;
   align-items: center;
@@ -2287,6 +2304,17 @@ button:disabled {
   color: #8a5f00;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
+
+  /* Reserve space but stay invisible when not active (no CLS) */
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.reading-indicator-active {
+  visibility: visible;
+  opacity: 1;
 }
 
 .reading-indicator-dark {
@@ -2377,6 +2405,14 @@ button:disabled {
   color: #805500;
   font-size: 12px;
   font-weight: 700;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.modal-reading-status-active {
+  visibility: visible;
+  opacity: 1;
 }
 
 .settings-alert {

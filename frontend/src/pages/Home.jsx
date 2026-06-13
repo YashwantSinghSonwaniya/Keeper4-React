@@ -373,7 +373,10 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   async function actuallyDelete(id) {
-    if (speechReader.activeId === id || speechReader.activeId === `modal-${id}`) {
+    if (
+      speechReader.activeId === id ||
+      speechReader.activeId === `modal-${id}`
+    ) {
       speechReader.stop();
     }
 
@@ -1100,7 +1103,8 @@ function Home({ user, isLoggedIn, onLogout }) {
                 <button
                   type="button"
                   className={`modal-read-aloud-btn ${
-                    speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isActive
+                    speechReader.getNoteSpeechState(`modal-${modalNoteId}`)
+                      .isActive
                       ? "modal-read-aloud-active"
                       : ""
                   }`}
@@ -1108,19 +1112,33 @@ function Home({ user, isLoggedIn, onLogout }) {
                   disabled={modalSaving}
                 >
                   <span aria-hidden="true">
-                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).icon}
+                    {
+                      speechReader.getNoteSpeechState(`modal-${modalNoteId}`)
+                        .icon
+                    }
                   </span>
                   <span>
-                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).label} aloud
+                    {
+                      speechReader.getNoteSpeechState(`modal-${modalNoteId}`)
+                        .label
+                    }{" "}
+                    aloud
                   </span>
                 </button>
-                {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isActive && (
-                  <span className="modal-reading-status">
-                    {speechReader.getNoteSpeechState(`modal-${modalNoteId}`).isReading
-                      ? "Reading..."
-                      : "Paused"}
-                  </span>
-                )}
+                <span
+                  className={`modal-reading-status ${
+                    speechReader.getNoteSpeechState(`modal-${modalNoteId}`)
+                      .isActive
+                      ? "modal-reading-status-active"
+                      : ""
+                  }`}
+                  aria-live="polite"
+                >
+                  {speechReader.getNoteSpeechState(`modal-${modalNoteId}`)
+                    .isReading
+                    ? "Reading..."
+                    : "Paused"}
+                </span>
               </div>
             )}
 

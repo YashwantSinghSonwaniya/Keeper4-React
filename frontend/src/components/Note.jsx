@@ -24,6 +24,14 @@ const NOTE_COLORS = [
  * The dropdown itself is rendered through a React PORTAL into <body> using
  * fixed positioning, so it can NEVER be clipped by parent overflow, CSS
  * columns, or @dnd-kit transform stacking contexts.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * ✅ CLS FIX (Reading indicator):
+ * The "🔊 Reading..." indicator is now ALWAYS rendered (space is reserved)
+ * and is only made visible/hidden via CSS. This prevents the note height
+ * from changing when reading starts/stops, which previously caused the
+ * CSS-columns Masonry layout to re-balance and "jump" notes around.
+ * ─────────────────────────────────────────────────────────────────────
  */
 function Note(props) {
   const { id } = props;
@@ -465,18 +473,31 @@ function Note(props) {
 
       <VoiceNotePlayer voiceNote={props.voiceNote} isDark={isDark} />
 
-      {isSpeechActive && (
-        <div
-          className={`reading-indicator ${
-            isDark ? "reading-indicator-dark" : ""
-          }`}
-        >
-          <span className="speaker-pulse" aria-hidden="true">
-            🔊
-          </span>
-          <span>{isSpeechReading ? "Reading..." : "Paused"}</span>
-        </div>
-      )}
+      {/*
+        ✅ CLS FIX:
+        The reading indicator is ALWAYS rendered so it permanently reserves
+        vertical space inside the note. We only toggle its visibility with a
+        class — the note's height never changes, so the CSS-columns Masonry
+        layout never re-balances and notes never "jump".
+
+        - aria-hidden + visibility:hidden when inactive keeps it out of the
+          accessibility tree and invisible while still occupying space.
+        - role="status" + aria-live announces the state to screen readers
+          when it becomes active.
+      */}
+      <div
+        className={`reading-indicator ${
+          isDark ? "reading-indicator-dark" : ""
+        } ${isSpeechActive ? "reading-indicator-active" : ""}`}
+        role="status"
+        aria-live="polite"
+        aria-hidden={isSpeechActive ? "false" : "true"}
+      >
+        <span className="speaker-pulse" aria-hidden="true">
+          🔊
+        </span>
+        <span>{isSpeechReading ? "Reading..." : "Paused"}</span>
+      </div>
 
       {/* ===================== NOTE ACTIONS ===================== */}
       <div className="note-actions">
