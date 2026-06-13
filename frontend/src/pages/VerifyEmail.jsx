@@ -71,12 +71,22 @@ function VerifyEmail({ onLogin }) {
         <h2>Email Verification</h2>
 
         {status === "verifying" && (
-          <p className="forgot-msg">⏳ Verifying your email, please wait...</p>
+          <p className="forgot-msg">
+            <span role="img" aria-label="loading">
+              ⏳
+            </span>{" "}
+            Verifying your email, please wait...
+          </p>
         )}
 
         {status === "success" && (
           <>
-            <p className="forgot-msg">✅ {message}</p>
+            <p className="forgot-msg">
+              <span role="img" aria-label="success">
+                ✅
+              </span>{" "}
+              {message}
+            </p>
             <p style={{ fontSize: "14px" }}>Redirecting you to your notes...</p>
             <p>
               <Link to="/">Go now</Link>

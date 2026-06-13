@@ -1,5 +1,5 @@
 import toast from "react-hot-toast";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 
 import Header from "../components/Header";
@@ -53,6 +53,44 @@ import {
   getExportFilename,
   normalizeExportNotes,
 } from "../exportNotes";
+
+function getGuestPromptUserKey(user) {
+  if (!user) return null;
+  if (user.id) return `user_${user.id}`;
+  return `user_${encodeURIComponent(user.email || "unknown")}`;
+}
+
+function getGuestPromptLastTimestampKey(userKey) {
+  return `lastGuestImportPrompt_${userKey}`;
+}
+
+function getGuestPromptDisabledKey(userKey) {
+  return `disableGuestImportPrompt_${userKey}`;
+}
+
+function getGuestImportPromptPendingKey(userKey) {
+  return `guestImportPromptPending_${userKey}`;
+}
+
+function getGuestImportPromptHandledKey(userKey) {
+  return `guestImportPromptHandled_${userKey}`;
+}
+
+function getGuestNotesFromStorage() {
+  const saved = localStorage.getItem("notes_guest");
+  if (!saved) return [];
+
+  try {
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && typeof item === "object")
+      : [];
+  } catch (err) {
+    console.error("Could not parse guest notes:", err);
+    localStorage.removeItem("notes_guest");
+    return [];
+  }
+}
 
 function Home({ user, isLoggedIn, onLogout }) {
   const [notes, setNotes] = useState([]);
@@ -111,6 +149,8 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [openMenuNoteId, setOpenMenuNoteId] = useState(null);
 
   const speechReader = useSpeechReader();
+  const { activeId: speechReaderActiveId, stop: stopSpeechReader } =
+    speechReader;
 
   function openNoteMenu(id) {
     setOpenMenuNoteId(id);
@@ -124,43 +164,21 @@ function Home({ user, isLoggedIn, onLogout }) {
     setOpenMenuNoteId(null);
   }
 
-  function getGuestPromptUserKey() {
-    if (!user) return null;
-    if (user.id) return `user_${user.id}`;
-    return `user_${encodeURIComponent(user.email || "unknown")}`;
-  }
-
-  function getGuestPromptLastTimestampKey(userKey) {
-    return `lastGuestImportPrompt_${userKey}`;
-  }
-
-  function getGuestPromptDisabledKey(userKey) {
-    return `disableGuestImportPrompt_${userKey}`;
-  }
-
-  function getGuestImportPromptPendingKey(userKey) {
-    return `guestImportPromptPending_${userKey}`;
-  }
-
-  function getGuestImportPromptHandledKey(userKey) {
-    return `guestImportPromptHandled_${userKey}`;
-  }
-
-  function getGuestNotesFromStorage() {
-    const saved = localStorage.getItem("notes_guest");
-    if (!saved) return [];
-
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed)
-        ? parsed.filter((item) => item && typeof item === "object")
-        : [];
-    } catch (err) {
-      console.error("Could not parse guest notes:", err);
-      localStorage.removeItem("notes_guest");
-      return [];
+  const closeModal = useCallback(() => {
+    if (modalNoteId && speechReaderActiveId === `modal-${modalNoteId}`) {
+      stopSpeechReader();
     }
-  }
+
+    setModalOpen(false);
+    setModalNote({ title: "", content: "", category: "none" });
+    setModalNoteId(null);
+    setModalColor("#ffffff");
+    setModalVoiceNote(null);
+    setModalVoiceRecording(null);
+    setModalVoiceDeleted(false);
+    setModalSaving(false);
+    setModalRecorderKey((prev) => prev + 1);
+  }, [modalNoteId, speechReaderActiveId, stopSpeechReader]);
 
   // ✅ KEY FIX — section-aware drag handler with unique prefixed IDs
   async function handleDragEnd(event, section) {
@@ -208,7 +226,7 @@ function Home({ user, isLoggedIn, onLogout }) {
     }
   }
 
-  async function loadNotes() {
+  const loadNotes = useCallback(async () => {
     setLoading(true);
     if (isLoggedIn) {
       try {
@@ -222,11 +240,11 @@ function Home({ user, isLoggedIn, onLogout }) {
       setNotes(saved ? JSON.parse(saved) : []);
     }
     setLoading(false);
-  }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     loadNotes();
-  }, [isLoggedIn]);
+  }, [loadNotes]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -237,7 +255,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   useEffect(() => {
     if (!isLoggedIn || !user) return;
 
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (!userKey) return;
 
     const pending =
@@ -270,7 +288,7 @@ function Home({ user, isLoggedIn, onLogout }) {
 
   useEffect(() => {
     if (!user) return;
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (!userKey) return;
     setDisableGuestImportPrompt(
       localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true",
@@ -296,7 +314,7 @@ function Home({ user, isLoggedIn, onLogout }) {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "unset";
     };
-  }, [modalOpen, showGuestVoiceUpgrade]);
+  }, [modalOpen, showGuestVoiceUpgrade, closeModal]);
 
   // ✅ Close any open note menu when the edit modal opens.
   useEffect(() => {
@@ -596,27 +614,11 @@ function Home({ user, isLoggedIn, onLogout }) {
     }
   }
 
-  function closeModal() {
-    if (modalNoteId && speechReader.activeId === `modal-${modalNoteId}`) {
-      speechReader.stop();
-    }
-
-    setModalOpen(false);
-    setModalNote({ title: "", content: "", category: "none" });
-    setModalNoteId(null);
-    setModalColor("#ffffff");
-    setModalVoiceNote(null);
-    setModalVoiceRecording(null);
-    setModalVoiceDeleted(false);
-    setModalSaving(false);
-    setModalRecorderKey((prev) => prev + 1);
-  }
-
   async function handleImportGuestNotes() {
     if (guestNotesToImport.length === 0) return;
     setGuestImportLoading(true);
 
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
 
     try {
       const notesToImport = guestNotesToImport.map((note, index) => ({
@@ -658,7 +660,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function handleSkipGuestImport() {
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (disableGuestImportPrompt && userKey) {
       localStorage.setItem(getGuestPromptDisabledKey(userKey), "true");
     }
@@ -677,7 +679,7 @@ function Home({ user, isLoggedIn, onLogout }) {
   }
 
   function handleToggleDisablePrompt() {
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (!userKey) return;
 
     setDisableGuestImportPrompt((prev) => {

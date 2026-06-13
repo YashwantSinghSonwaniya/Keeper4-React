@@ -44,9 +44,15 @@ function GuestImportModal({
         <div className="guest-import-header">
           <span className="material-icons guest-import-icon">description</span>
           <div>
-            <h3 id="guest-import-title">📄 Import Guest Notes</h3>
+            <h3 id="guest-import-title">
+              <span role="img" aria-label="document">
+                📄
+              </span>{" "}
+              Import Guest Notes
+            </h3>
             <p className="guest-import-subtitle">
-              We found {count} note{count === 1 ? "" : "s"} stored on this device.
+              We found {count} note{count === 1 ? "" : "s"} stored on this
+              device.
             </p>
           </div>
         </div>

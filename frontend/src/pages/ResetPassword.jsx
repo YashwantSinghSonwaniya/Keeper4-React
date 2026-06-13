@@ -100,7 +100,10 @@ function ResetPassword() {
         {success ? (
           <>
             <p className="forgot-msg">
-              ✅ Your password has been reset successfully! Redirecting you to
+              <span role="img" aria-label="success">
+                ✅
+              </span>{" "}
+              Your password has been reset successfully! Redirecting you to
               login...
             </p>
             <p>

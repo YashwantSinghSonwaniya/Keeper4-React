@@ -14,7 +14,8 @@ function isValidEmailFormat(email) {
   if (segments.length !== 2) return false;
   const [local, domain] = segments;
   if (!local.length || !domain.length) return false;
-  if (local.startsWith(".") || local.endsWith(".") || local.includes("..")) return false;
+  if (local.startsWith(".") || local.endsWith(".") || local.includes(".."))
+    return false;
   if (local.length > 64) return false;
   if (!/^[a-zA-Z0-9._%+\-!#$&'*/=?^`{|}~]+$/.test(local)) return false;
   const labels = domain.split(".");
@@ -22,7 +23,7 @@ function isValidEmailFormat(email) {
   const tld = labels[labels.length - 1];
   if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return false;
   if (domain.length > 255) return false;
-  if (!/^[a-zA-Z0-9.\-]+$/.test(domain)) return false;
+  if (!/^[a-zA-Z0-9.-]+$/.test(domain)) return false;
   return true;
 }
 
@@ -46,7 +47,7 @@ function Register({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);   // ✅ "check your email" state
+  const [submitted, setSubmitted] = useState(false); // ✅ "check your email" state
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -85,7 +86,10 @@ function Register({ onLogin }) {
         onLogin(res.data.user);
         history.push("/");
       } catch (err) {
-        setError(err.response?.data?.error || "Google sign-up failed. Please try again.");
+        setError(
+          err.response?.data?.error ||
+            "Google sign-up failed. Please try again.",
+        );
       } finally {
         setGoogleLoading(false);
       }
@@ -148,13 +152,15 @@ function Register({ onLogin }) {
         <div className="auth-card">
           <h2>Check Your Email</h2>
           <p className="forgot-msg">
-            📧 We've sent a verification link to{" "}
-            <strong>{submittedEmail}</strong>.
+            <span role="img" aria-label="email">
+              📧
+            </span>{" "}
+            We've sent a verification link to <strong>{submittedEmail}</strong>.
           </p>
           <p style={{ fontSize: "14px", lineHeight: 1.5 }}>
-            Please click the link in that email to activate your account.
-            The link expires in 24 hours. Your account will not be created
-            until you verify.
+            Please click the link in that email to activate your account. The
+            link expires in 24 hours. Your account will not be created until you
+            verify.
           </p>
           <p style={{ fontSize: "13px", color: "#5f6368", lineHeight: 1.5 }}>
             Didn't get it? Check your spam folder, or{" "}

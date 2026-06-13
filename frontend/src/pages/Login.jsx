@@ -26,7 +26,7 @@ function isValidEmailFormat(email) {
   const tld = labels[labels.length - 1];
   if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return false;
   if (domain.length > 255) return false;
-  if (!/^[a-zA-Z0-9.\-]+$/.test(domain)) return false;
+  if (!/^[a-zA-Z0-9.-]+$/.test(domain)) return false;
 
   return true;
 }

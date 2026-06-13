@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useHistory } from "react-router-dom";
 import toast from "react-hot-toast";
 import Header from "../components/Header";
@@ -10,10 +10,7 @@ import {
   importNotes,
   getNotes,
 } from "../api";
-import {
-  loadSpeechSettings,
-  saveSpeechSettings,
-} from "../speechSettings";
+import { loadSpeechSettings, saveSpeechSettings } from "../speechSettings";
 import {
   downloadTextFile,
   formatNotesAsJson,
@@ -39,6 +36,47 @@ function validatePassword(password) {
   return null;
 }
 
+function getGuestPromptUserKey(user) {
+  if (!user) return null;
+  if (user.id) return `user_${user.id}`;
+  return `user_${encodeURIComponent(user.email || "unknown")}`;
+}
+
+function getGuestPromptDisabledKey(userKey) {
+  return `disableGuestImportPrompt_${userKey}`;
+}
+
+function getGuestImportPromptPendingKey(userKey) {
+  return `guestImportPromptPending_${userKey}`;
+}
+
+function getGuestImportPromptHandledKey(userKey) {
+  return `guestImportPromptHandled_${userKey}`;
+}
+
+function getGuestPromptLastTimestampKey(userKey) {
+  return `lastGuestImportPrompt_${userKey}`;
+}
+
+function getGuestNotesFromStorage() {
+  const saved = localStorage.getItem("notes_guest");
+  if (!saved) return [];
+
+  try {
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && typeof item === "object")
+      : [];
+  } catch (err) {
+    console.error("Could not parse guest notes:", err);
+    return [];
+  }
+}
+
+function getGuestNotesCount() {
+  return getGuestNotesFromStorage().length;
+}
+
 function Settings({ user, isLoggedIn, onLogout }) {
   const history = useHistory();
 
@@ -61,63 +99,23 @@ function Settings({ user, isLoggedIn, onLogout }) {
 
   const [guestNotesCount, setGuestNotesCount] = useState(0);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
-  const [disableGuestImportPrompt, setDisableGuestImportPrompt] = useState(false);
+  const [disableGuestImportPrompt, setDisableGuestImportPrompt] =
+    useState(false);
   const [exportLoading, setExportLoading] = useState(false);
 
-  function getGuestPromptUserKey() {
-    if (!user) return null;
-    if (user.id) return `user_${user.id}`;
-    return `user_${encodeURIComponent(user.email || "unknown")}`;
-  }
-
-  function getGuestPromptDisabledKey(userKey) {
-    return `disableGuestImportPrompt_${userKey}`;
-  }
-
-  function getGuestImportPromptPendingKey(userKey) {
-    return `guestImportPromptPending_${userKey}`;
-  }
-
-  function getGuestImportPromptHandledKey(userKey) {
-    return `guestImportPromptHandled_${userKey}`;
-  }
-
-  function getGuestPromptLastTimestampKey(userKey) {
-    return `lastGuestImportPrompt_${userKey}`;
-  }
-
-  function getGuestNotesFromStorage() {
-    const saved = localStorage.getItem("notes_guest");
-    if (!saved) return [];
-
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed)
-        ? parsed.filter((item) => item && typeof item === "object")
-        : [];
-    } catch (err) {
-      console.error("Could not parse guest notes:", err);
-      return [];
-    }
-  }
-
-  function getGuestNotesCount() {
-    return getGuestNotesFromStorage().length;
-  }
-
-  function refreshGuestNotesCount() {
+  const refreshGuestNotesCount = useCallback(() => {
     setGuestNotesCount(getGuestNotesCount());
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     setDisableGuestImportPrompt(
       userKey
         ? localStorage.getItem(getGuestPromptDisabledKey(userKey)) === "true"
         : false,
     );
-  }
+  }, [user]);
 
   useEffect(() => {
     refreshGuestNotesCount();
-  }, [user]);
+  }, [refreshGuestNotesCount]);
 
   useEffect(() => {
     if (!speechSupported) return undefined;
@@ -222,7 +220,7 @@ function Settings({ user, isLoggedIn, onLogout }) {
       return;
     }
 
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (!userKey) {
       toast.error("Unable to determine current user.");
       return;
@@ -265,16 +263,21 @@ function Settings({ user, isLoggedIn, onLogout }) {
 
   function handleDisableGuestPromptToggle(e) {
     const value = e.target.checked;
-    const userKey = getGuestPromptUserKey();
+    const userKey = getGuestPromptUserKey(user);
     if (!userKey) {
       toast.error("Unable to determine current user.");
       return;
     }
 
     setDisableGuestImportPrompt(value);
-    localStorage.setItem(getGuestPromptDisabledKey(userKey), value ? "true" : "false");
+    localStorage.setItem(
+      getGuestPromptDisabledKey(userKey),
+      value ? "true" : "false",
+    );
     toast.success(
-      value ? "Guest import reminders disabled." : "Guest import reminders enabled.",
+      value
+        ? "Guest import reminders disabled."
+        : "Guest import reminders enabled.",
     );
   }
 
@@ -753,8 +756,8 @@ function Settings({ user, isLoggedIn, onLogout }) {
                       Delete account
                     </p>
                     <p className="settings-item-desc">
-                      Permanently delete your account and all notes. This
-                      cannot be undone.
+                      Permanently delete your account and all notes. This cannot
+                      be undone.
                     </p>
                   </div>
                   <span className="material-icons settings-chevron danger-chevron">
@@ -768,8 +771,11 @@ function Settings({ user, isLoggedIn, onLogout }) {
                     className="settings-form"
                   >
                     <p className="danger-warning">
-                      ⚠️ This will permanently delete your account and all
-                      your notes. Enter your password to confirm.
+                      <span role="img" aria-label="warning">
+                        ⚠️
+                      </span>{" "}
+                      This will permanently delete your account and all your
+                      notes. Enter your password to confirm.
                     </p>
                     <input
                       type="password"
