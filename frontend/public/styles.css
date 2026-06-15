@@ -2982,3 +2982,11 @@ button:disabled {
     min-width: 40px;
   }
 }
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  margin-right: 8px;
+  vertical-align: middle;
+}

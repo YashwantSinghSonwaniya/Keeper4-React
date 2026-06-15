@@ -7,17 +7,13 @@ function Header({ isLoggedIn, user, onLogout }) {
   return (
     <header>
       <h1>
-        <span className="material-icons">note</span>
+        <img src="/favicon.png" alt="Keeper" className="header-logo" />
         Keeper
       </h1>
 
       <div className="header-right">
         {/* Settings icon — always visible */}
-        <Link
-          to="/settings"
-          className="settings-icon-btn"
-          title="Settings"
-        >
+        <Link to="/settings" className="settings-icon-btn" title="Settings">
           <span className="material-icons">settings</span>
         </Link>
 
