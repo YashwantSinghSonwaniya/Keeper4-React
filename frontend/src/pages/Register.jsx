@@ -3,6 +3,11 @@ import { Link } from "react-router-dom";
 import { registerUser, googleAuth } from "../api";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useHistory } from "react-router-dom";
+import AuthNoticeModal from "../components/AuthNoticeModal";
+import {
+  EMAIL_REGISTRATION_NOTICE,
+  EMAIL_SERVICES_UNAVAILABLE,
+} from "../authServiceAvailability";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Email validator — mirrors backend rules for instant client-side feedback.
@@ -49,6 +54,7 @@ function Register({ onLogin }) {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false); // ✅ "check your email" state
   const [submittedEmail, setSubmittedEmail] = useState("");
+  const [showEmailNotice, setShowEmailNotice] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -102,6 +108,11 @@ function Register({ onLogin }) {
   async function handleRegister(e) {
     e.preventDefault();
     setError("");
+
+    if (EMAIL_SERVICES_UNAVAILABLE) {
+      setShowEmailNotice(true);
+      return;
+    }
 
     const trimmedName = form.name.trim();
     const normalizedEmail = form.email.trim().toLowerCase();
@@ -203,7 +214,17 @@ function Register({ onLogin }) {
           <span>OR</span>
         </div>
 
-        <form onSubmit={handleRegister}>
+        {EMAIL_SERVICES_UNAVAILABLE && (
+          <p className="auth-inline-notice">
+            Email registration is temporarily unavailable. Please use Google
+            Sign-In.
+          </p>
+        )}
+
+        <form
+          onSubmit={handleRegister}
+          noValidate={EMAIL_SERVICES_UNAVAILABLE}
+        >
           <input
             type="text"
             name="name"
@@ -243,6 +264,18 @@ function Register({ onLogin }) {
           Already have an account? <Link to="/login">Login</Link>
         </p>
       </div>
+
+      <AuthNoticeModal
+        open={showEmailNotice}
+        title={EMAIL_REGISTRATION_NOTICE.title}
+        message={EMAIL_REGISTRATION_NOTICE.message}
+        onPrimary={() => {
+          setShowEmailNotice(false);
+          handleGoogleRegister();
+        }}
+        onClose={() => setShowEmailNotice(false)}
+        primaryLoading={googleLoading}
+      />
     </div>
   );
 }

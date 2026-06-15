@@ -2,6 +2,11 @@ import React, { useState } from "react";
 import { Link, useHistory } from "react-router-dom";
 import { loginUser, googleAuth } from "../api";
 import { useGoogleLogin } from "@react-oauth/google";
+import AuthNoticeModal from "../components/AuthNoticeModal";
+import {
+  EMAIL_SERVICES_UNAVAILABLE,
+  PASSWORD_RESET_NOTICE,
+} from "../authServiceAvailability";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client-side email validator — mirrors the backend rules exactly so the user
@@ -39,6 +44,7 @@ function Login({ onLogin }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMsg, setForgotMsg] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [showEmailNotice, setShowEmailNotice] = useState(false);
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -128,6 +134,11 @@ function Login({ onLogin }) {
     e.preventDefault();
     setForgotMsg("");
 
+    if (EMAIL_SERVICES_UNAVAILABLE) {
+      setShowEmailNotice(true);
+      return;
+    }
+
     // Client-side email format check for instant feedback
     const normalizedEmail = forgotEmail.trim().toLowerCase();
     if (!isValidEmailFormat(normalizedEmail)) {
@@ -203,7 +214,15 @@ function Login({ onLogin }) {
 
             <p
               className="forgot-password-link"
-              onClick={() => setShowForgot(true)}
+              onClick={() => {
+                if (EMAIL_SERVICES_UNAVAILABLE) {
+                  setError("");
+                  setShowEmailNotice(true);
+                  return;
+                }
+
+                setShowForgot(true);
+              }}
             >
               Forgot password?
             </p>
@@ -244,6 +263,18 @@ function Login({ onLogin }) {
           </>
         )}
       </div>
+
+      <AuthNoticeModal
+        open={showEmailNotice}
+        title={PASSWORD_RESET_NOTICE.title}
+        message={PASSWORD_RESET_NOTICE.message}
+        onPrimary={() => {
+          setShowEmailNotice(false);
+          handleGoogleLogin();
+        }}
+        onClose={() => setShowEmailNotice(false)}
+        primaryLoading={googleLoading}
+      />
     </div>
   );
 }

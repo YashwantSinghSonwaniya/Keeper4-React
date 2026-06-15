@@ -287,6 +287,100 @@ footer p {
   line-height: 1.4;
 }
 
+.auth-inline-notice {
+  background: #fff8e1;
+  border: 1px solid rgba(245, 186, 19, 0.35);
+  color: #7a5200;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.auth-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.66);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: guestBackdropFade 240ms ease;
+}
+
+.auth-notice-card {
+  width: min(460px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.24);
+  padding: 28px;
+  animation: guestCardPop 260ms ease;
+}
+
+.auth-notice-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.auth-notice-icon {
+  color: #f5ba13;
+  font-size: 36px;
+  flex-shrink: 0;
+}
+
+.auth-notice-card h3 {
+  color: #222;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  margin-bottom: 10px;
+}
+
+.auth-notice-card p {
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.auth-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+  flex-wrap: wrap;
+}
+
+.auth-notice-primary,
+.auth-notice-secondary {
+  border: none;
+  border-radius: 20px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.auth-notice-primary {
+  background: #f5ba13;
+  color: #fff;
+  min-width: 174px;
+}
+
+.auth-notice-secondary {
+  background: #f1f5f9;
+  color: #334155;
+  min-width: 92px;
+}
+
+.auth-notice-primary:hover,
+.auth-notice-secondary:hover {
+  transform: translateY(-1px);
+}
+
 /* ✅ welcome text always visible */
 .welcome-text {
   color: #fff;
@@ -642,7 +736,8 @@ button:disabled {
 @media (max-width: 600px) {
   .auth-card,
   .guest-import-card,
-  .guest-voice-card {
+  .guest-voice-card,
+  .auth-notice-card {
     width: 100%;
     padding: 24px;
   }
@@ -652,9 +747,15 @@ button:disabled {
   }
 
   .guest-import-actions,
-  .guest-voice-actions {
+  .guest-voice-actions,
+  .auth-notice-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .auth-notice-primary,
+  .auth-notice-secondary {
+    width: 100%;
   }
 }
 
