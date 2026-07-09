@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { createPortal } from "react-dom";
 import CATEGORIES from "../categories";
 import VoiceNotePlayer from "./VoiceNotePlayer";
+import AttachmentList from "./AttachmentList";
 
 const NOTE_COLORS = [
   { name: "Default", hex: "#ffffff" },
@@ -472,6 +473,14 @@ function Note(props) {
       <p style={{ color: isDark ? "#ccc" : "#555" }}>{props.content}</p>
 
       <VoiceNotePlayer voiceNote={props.voiceNote} isDark={isDark} />
+
+      <AttachmentList
+        attachments={props.attachments}
+        onDelete={(attachment) => props.onDeleteAttachment(props.id, attachment)}
+        onDownload={props.onDownloadAttachment}
+        deletingId={props.deletingAttachmentId}
+        isDark={isDark}
+      />
 
       {/*
         ✅ CLS FIX:

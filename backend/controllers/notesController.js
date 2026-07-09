@@ -1,4 +1,5 @@
 const pool = require("../db");
+const { deleteLocalFile } = require("./attachmentsController");
 
 const voiceNoteJsonSql = `
   CASE
@@ -17,6 +18,30 @@ const voiceNoteJsonSql = `
   END AS voice_note
 `;
 
+// Aggregates every row in `attachments` for a note into a single JSON array
+// via a correlated LATERAL subquery. Using LATERAL (instead of a plain LEFT
+// JOIN + GROUP BY) means we don't have to touch the existing voice_note
+// LEFT JOIN or add a GROUP BY to any query that already selects n.*.
+const attachmentsJsonSql = `COALESCE(att.attachments, '[]'::json) AS attachments`;
+
+const attachmentsJoinSql = `
+  LEFT JOIN LATERAL (
+    SELECT json_agg(
+             json_build_object(
+               'id', a.id,
+               'original_name', a.original_name,
+               'mime_type', a.mime_type,
+               'file_size', a.file_size,
+               'file_path', a.file_path,
+               'created_at', a.created_at
+             )
+             ORDER BY a.created_at ASC
+           ) AS attachments
+    FROM attachments a
+    WHERE a.note_id = n.id AND a.user_id = n.user_id
+  ) att ON true
+`;
+
 function updatedNoteWithVoiceNoteQuery(updateSql) {
   return `
     WITH updated_note AS (
@@ -25,10 +50,12 @@ function updatedNoteWithVoiceNoteQuery(updateSql) {
     )
     SELECT
       n.*,
-      ${voiceNoteJsonSql}
+      ${voiceNoteJsonSql},
+      ${attachmentsJsonSql}
     FROM updated_note n
     LEFT JOIN voice_notes vn
       ON vn.note_id = n.id AND vn.user_id = n.user_id
+    ${attachmentsJoinSql}
   `;
 }
 
@@ -38,10 +65,12 @@ async function getNotes(req, res) {
     const result = await pool.query(
       `SELECT
          n.*,
-         ${voiceNoteJsonSql}
+         ${voiceNoteJsonSql},
+         ${attachmentsJsonSql}
        FROM notes n
        LEFT JOIN voice_notes vn
          ON vn.note_id = n.id AND vn.user_id = n.user_id
+       ${attachmentsJoinSql}
        WHERE n.user_id = $1
        ORDER BY n.is_pinned DESC, n.position ASC, n.created_at DESC`,
       [req.user.id]
@@ -110,7 +139,6 @@ async function updateNotePositions(req, res) {
   }
 
   try {
-    // Update each note's position
     const updates = orderedIds.map((id, index) =>
       pool.query(
         "UPDATE notes SET position = $1 WHERE id = $2 AND user_id = $3",
@@ -126,21 +154,50 @@ async function updateNotePositions(req, res) {
   }
 }
 
-// ✅ DELETE note
+// ✅ DELETE note (also cleans up any attached files on disk)
 async function deleteNote(req, res) {
   const { id } = req.params;
+  const client = await pool.connect();
+
   try {
-    const result = await pool.query(
-      "DELETE FROM notes WHERE id=$1 AND user_id=$2 RETURNING *",
+    await client.query("BEGIN");
+
+    const noteResult = await client.query(
+      "SELECT id FROM notes WHERE id=$1 AND user_id=$2",
       [id, req.user.id]
     );
-    if (result.rows.length === 0) {
+
+    if (noteResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Note not found." });
     }
+
+    // Grab attachment filenames BEFORE the cascade delete removes their
+    // rows, so we still know which physical files to remove afterward.
+    const attachmentsResult = await client.query(
+      "SELECT stored_name FROM attachments WHERE note_id=$1 AND user_id=$2",
+      [id, req.user.id]
+    );
+
+    await client.query("DELETE FROM notes WHERE id=$1 AND user_id=$2", [
+      id,
+      req.user.id,
+    ]);
+
+    await client.query("COMMIT");
+
+    // Best-effort filesystem cleanup, run after the transaction commits.
+    await Promise.all(
+      attachmentsResult.rows.map((row) => deleteLocalFile(row.stored_name))
+    );
+
     res.json({ message: "Note deleted successfully." });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Delete note error:", err.message);
     res.status(500).json({ error: "Server error." });
+  } finally {
+    client.release();
   }
 }
 

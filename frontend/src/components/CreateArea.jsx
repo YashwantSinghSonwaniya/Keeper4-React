@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import VoiceRecorder from "./VoiceRecorder";
+import AttachmentPicker from "./AttachmentPicker";
+import SelectedFilesPreview from "./SelectedFilesPreview";
 
 const addSound = new Audio("/sounds/addNote.wav");
 const warningSound = new Audio("/sounds/warningSound.mp3");
@@ -13,6 +15,7 @@ function CreateArea(props) {
   const [error, setError] = useState("");
   const [voiceRecording, setVoiceRecording] = useState(null);
   const [recorderKey, setRecorderKey] = useState(0);
+  const [selectedAttachments, setSelectedAttachments] = useState([]);
   const [saving, setSaving] = useState(false);
 
   function handleChange(event) {
@@ -35,20 +38,22 @@ function CreateArea(props) {
     }
   }, [props.isEditing, props.editNote]);
 
+  function handleRemoveAttachment(index) {
+    setSelectedAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function submitNote(event) {
     event.preventDefault();
 
     const hasText =
       titleName.title.trim() !== "" || titleName.content.trim() !== "";
     const hasVoice = Boolean(voiceRecording?.blob);
+    const hasAttachments = selectedAttachments.length > 0;
 
-    if (
-      !hasText &&
-      !hasVoice
-    ) {
+    if (!hasText && !hasVoice && !hasAttachments) {
       warningSound.currentTime = 0;
       warningSound.play();
-      setError("Title, content, or a voice note is required.");
+      setError("Title, content, a voice note, or an attachment is required.");
       return;
     }
 
@@ -58,7 +63,7 @@ function CreateArea(props) {
     try {
       const saved = props.isEditing
         ? await props.onUpdate(titleName)
-        : await props.onAdd(titleName, voiceRecording);
+        : await props.onAdd(titleName, voiceRecording, selectedAttachments);
 
       if (saved === false) return;
 
@@ -67,6 +72,7 @@ function CreateArea(props) {
       setTitleName({ title: "", content: "" });
       setVoiceRecording(null);
       setRecorderKey((prev) => prev + 1);
+      setSelectedAttachments([]);
       setExpanded(false);
     } finally {
       setSaving(false);
@@ -119,7 +125,24 @@ function CreateArea(props) {
             onGuestAction={props.onGuestVoiceAction}
             disabled={saving}
           />
+          <AttachmentPicker
+            currentCount={selectedAttachments.length}
+            onFilesAdded={(files) =>
+              setSelectedAttachments((prev) => [...prev, ...files])
+            }
+            isLoggedIn={props.isLoggedIn}
+            onGuestAction={props.onGuestAttachmentAction}
+            disabled={saving}
+          />
         </div>
+      )}
+
+      {isExpanded && (
+        <SelectedFilesPreview
+          files={selectedAttachments}
+          onRemove={handleRemoveAttachment}
+          disabled={saving}
+        />
       )}
 
       {isExpanded && (

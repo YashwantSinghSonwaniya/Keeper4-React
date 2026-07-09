@@ -12,6 +12,17 @@ export function resolveMediaUrl(url) {
   return `${API_ORIGIN}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
+export function triggerBrowserDownload(blobData, filename) {
+  const url = window.URL.createObjectURL(blobData);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 // ✅ Automatically attach JWT token to every request
 API.interceptors.request.use((req) => {
   const token = localStorage.getItem("token");
@@ -23,7 +34,7 @@ API.interceptors.request.use((req) => {
 
 // ✅ Auth
 export const registerUser = (data) => API.post("/auth/register", data);
-export const verifyEmail = (data) => API.post("/auth/verify-email", data); // ✅ New
+export const verifyEmail = (data) => API.post("/auth/verify-email", data);
 export const loginUser = (data) => API.post("/auth/login", data);
 export const googleAuth = (data) => API.post("/auth/google", data);
 export const forgotPassword = (data) => API.post("/auth/forgot-password", data);
@@ -77,5 +88,18 @@ export const uploadVoiceNote = (noteId, recording) => {
 
 export const getVoiceNote = (noteId) => API.get(`/voice-notes/${noteId}`);
 export const deleteVoiceNote = (voiceId) => API.delete(`/voice-notes/${voiceId}`);
+
+// ✅ Attachments
+export const uploadAttachments = (noteId, files) => {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return API.post(`/attachments/${noteId}`, formData);
+};
+
+export const getAttachments = (noteId) => API.get(`/attachments/${noteId}`);
+export const deleteAttachment = (attachmentId) =>
+  API.delete(`/attachments/${attachmentId}`);
+export const downloadAttachment = (attachmentId) =>
+  API.get(`/attachments/${attachmentId}/download`, { responseType: "blob" });
 
 export default API;

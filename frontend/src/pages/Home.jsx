@@ -7,8 +7,12 @@ import Footer from "../components/Footer";
 import Note from "../components/Note";
 import CreateArea from "../components/CreateArea";
 import GuestVoiceUpgradeModal from "../components/GuestVoiceUpgradeModal";
+import GuestAttachmentUpgradeModal from "../components/GuestAttachmentUpgradeModal";
 import VoiceRecorder from "../components/VoiceRecorder";
 import VoiceNotePlayer from "../components/VoiceNotePlayer";
+import AttachmentList from "../components/AttachmentList";
+import AttachmentPicker from "../components/AttachmentPicker";
+import SelectedFilesPreview from "../components/SelectedFilesPreview";
 import useSpeechReader from "../hooks/useSpeechReader";
 
 import {
@@ -23,6 +27,10 @@ import {
   uploadVoiceNote,
   deleteVoiceNote,
   updateCategory,
+  uploadAttachments,
+  deleteAttachment,
+  downloadAttachment,
+  triggerBrowserDownload,
 } from "../api";
 
 import {
@@ -110,6 +118,9 @@ function Home({ user, isLoggedIn, onLogout }) {
   const [modalVoiceDeleted, setModalVoiceDeleted] = useState(false);
   const [modalRecorderKey, setModalRecorderKey] = useState(0);
   const [modalSaving, setModalSaving] = useState(false);
+  const [modalAttachments, setModalAttachments] = useState([]);
+  const [modalNewAttachmentFiles, setModalNewAttachmentFiles] = useState([]);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState({
     open: false,
@@ -143,6 +154,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     useState(false);
   const [guestImportLoading, setGuestImportLoading] = useState(false);
   const [showGuestVoiceUpgrade, setShowGuestVoiceUpgrade] = useState(false);
+  const [showGuestAttachmentUpgrade, setShowGuestAttachmentUpgrade] =
+    useState(false);
 
   // ✅ Single source of truth for which note's More menu is open.
   // Guarantees only ONE menu can ever be open at a time.
@@ -178,6 +191,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalVoiceDeleted(false);
     setModalSaving(false);
     setModalRecorderKey((prev) => prev + 1);
+    setModalAttachments([]);
+    setModalNewAttachmentFiles([]);
   }, [modalNoteId, speechReaderActiveId, stopSpeechReader]);
 
   // ✅ KEY FIX — section-aware drag handler with unique prefixed IDs
@@ -304,9 +319,14 @@ function Home({ user, isLoggedIn, onLogout }) {
         return;
       }
 
+      if (showGuestAttachmentUpgrade) {
+        setShowGuestAttachmentUpgrade(false);
+        return;
+      }
+
       closeModal();
     }
-    if (modalOpen || showGuestVoiceUpgrade) {
+    if (modalOpen || showGuestVoiceUpgrade || showGuestAttachmentUpgrade) {
       document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
     }
@@ -314,7 +334,7 @@ function Home({ user, isLoggedIn, onLogout }) {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "unset";
     };
-  }, [modalOpen, showGuestVoiceUpgrade, closeModal]);
+  }, [modalOpen, showGuestVoiceUpgrade, showGuestAttachmentUpgrade, closeModal]);
 
   // ✅ Close any open note menu when the edit modal opens.
   useEffect(() => {
@@ -336,30 +356,63 @@ function Home({ user, isLoggedIn, onLogout }) {
     (n) => !n.isPinned && !n.is_pinned,
   );
 
-  async function addNote(newNote, voiceRecording) {
+  async function addNote(newNote, voiceRecording, attachmentFiles) {
     if (isLoggedIn) {
       try {
         const res = await createNote(newNote);
         let savedNote = res.data;
 
-        if (voiceRecording?.blob) {
+        const hasVoice = Boolean(voiceRecording?.blob);
+        const hasAttachments = Boolean(
+          attachmentFiles && attachmentFiles.length > 0,
+        );
+
+        let voiceFailed = false;
+        let attachmentsFailed = false;
+
+        if (hasVoice) {
           try {
             const voiceRes = await uploadVoiceNote(
               savedNote.id,
               voiceRecording,
             );
-            savedNote = {
-              ...savedNote,
-              voice_note: voiceRes.data.voice_note,
-            };
-            toast.success("Note with voice added!");
+            savedNote = { ...savedNote, voice_note: voiceRes.data.voice_note };
           } catch (err) {
             console.error("Failed to upload voice note:", err);
-            toast.error(
-              err.response?.data?.error ||
-                "Note saved, but voice note upload failed.",
-            );
+            voiceFailed = true;
           }
+        }
+
+        if (hasAttachments) {
+          try {
+            const attachRes = await uploadAttachments(
+              savedNote.id,
+              attachmentFiles,
+            );
+            savedNote = {
+              ...savedNote,
+              attachments: attachRes.data.attachments,
+            };
+          } catch (err) {
+            console.error("Failed to upload attachments:", err);
+            attachmentsFailed = true;
+          }
+        }
+
+        if (voiceFailed && attachmentsFailed) {
+          toast.error(
+            "Note saved, but the voice note and attachments failed to upload.",
+          );
+        } else if (voiceFailed) {
+          toast.error("Note saved, but the voice note failed to upload.");
+        } else if (attachmentsFailed) {
+          toast.error("Note saved, but the attachments failed to upload.");
+        } else if (hasVoice && hasAttachments) {
+          toast.success("Note with voice and attachments added!");
+        } else if (hasVoice) {
+          toast.success("Note with voice added!");
+        } else if (hasAttachments) {
+          toast.success("Note with attachments added!");
         } else {
           toast.success("Note added!");
         }
@@ -443,6 +496,8 @@ function Home({ user, isLoggedIn, onLogout }) {
     setModalVoiceRecording(null);
     setModalVoiceDeleted(false);
     setModalRecorderKey((prev) => prev + 1);
+    setModalAttachments(note.attachments || []);
+    setModalNewAttachmentFiles([]);
     setModalOpen(true);
   }
 
@@ -524,9 +579,11 @@ function Home({ user, isLoggedIn, onLogout }) {
       modalNote.title.trim() !== "" || modalNote.content.trim() !== "";
     const keepsExistingVoice = Boolean(modalVoiceNote && !modalVoiceDeleted);
     const hasNewVoice = Boolean(modalVoiceRecording?.blob);
+    const hasAttachments =
+      modalAttachments.length > 0 || modalNewAttachmentFiles.length > 0;
 
-    if (!hasText && !keepsExistingVoice && !hasNewVoice) {
-      toast.error("Title, content, or a voice note is required.");
+    if (!hasText && !keepsExistingVoice && !hasNewVoice && !hasAttachments) {
+      toast.error("Title, content, a voice note, or an attachment is required.");
       return;
     }
 
@@ -534,6 +591,7 @@ function Home({ user, isLoggedIn, onLogout }) {
 
     if (isLoggedIn) {
       let finalVoiceNote = keepsExistingVoice ? modalVoiceNote : null;
+      let finalAttachments = modalAttachments;
 
       try {
         if ((modalVoiceDeleted || hasNewVoice) && modalVoiceNote?.id) {
@@ -579,6 +637,27 @@ function Home({ user, isLoggedIn, onLogout }) {
           }
         }
 
+        if (modalNewAttachmentFiles.length > 0) {
+          try {
+            const attachRes = await uploadAttachments(
+              modalNoteId,
+              modalNewAttachmentFiles,
+            );
+            finalAttachments = [
+              ...finalAttachments,
+              ...attachRes.data.attachments,
+            ];
+            setModalNewAttachmentFiles([]);
+          } catch (err) {
+            console.error("Failed to upload attachments:", err);
+            toast.error(
+              err.response?.data?.error ||
+                "Some attachments failed to upload. Try saving again to retry.",
+            );
+            return;
+          }
+        }
+
         const res = await updateNote(modalNoteId, modalNote);
 
         setNotes((prev) =>
@@ -588,6 +667,7 @@ function Home({ user, isLoggedIn, onLogout }) {
                   ...n,
                   ...res.data,
                   voice_note: finalVoiceNote,
+                  attachments: finalAttachments,
                 }
               : n,
           ),
@@ -764,6 +844,67 @@ function Home({ user, isLoggedIn, onLogout }) {
     speechReader.toggleNote(`modal-${modalNoteId}`, modalNote);
   }
 
+  async function handleDeleteAttachment(noteId, attachment) {
+    setDeletingAttachmentId(attachment.id);
+    try {
+      await deleteAttachment(attachment.id);
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === noteId
+            ? {
+                ...n,
+                attachments: (n.attachments || []).filter(
+                  (a) => a.id !== attachment.id,
+                ),
+              }
+            : n,
+        ),
+      );
+      toast.success("Attachment deleted.");
+    } catch (err) {
+      console.error("Failed to delete attachment:", err);
+      toast.error(err.response?.data?.error || "Failed to delete attachment.");
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  }
+
+  async function handleDeleteModalAttachment(attachment) {
+    setDeletingAttachmentId(attachment.id);
+    try {
+      await deleteAttachment(attachment.id);
+      setModalAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === modalNoteId
+            ? {
+                ...n,
+                attachments: (n.attachments || []).filter(
+                  (a) => a.id !== attachment.id,
+                ),
+              }
+            : n,
+        ),
+      );
+      toast.success("Attachment deleted.");
+    } catch (err) {
+      console.error("Failed to delete attachment:", err);
+      toast.error(err.response?.data?.error || "Failed to delete attachment.");
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  }
+
+  async function handleDownloadAttachment(attachment) {
+    try {
+      const res = await downloadAttachment(attachment.id);
+      triggerBrowserDownload(res.data, attachment.original_name);
+    } catch (err) {
+      console.error("Failed to download attachment:", err);
+      toast.error("Failed to download attachment.");
+    }
+  }
+
   // ✅ renderNote: use SortableNote when logged in, plain Note for guests
   function renderNote(noteItem, sectionIndex, section) {
     let id;
@@ -786,6 +927,7 @@ function Home({ user, isLoggedIn, onLogout }) {
           isPinned={isPinned}
           category={noteItem.category || "none"}
           voiceNote={noteItem.voice_note}
+          attachments={noteItem.attachments || []}
           onDelete={confirmDelete}
           onEdit={editNoteHandler}
           onColorChange={changeNoteColor}
@@ -793,6 +935,9 @@ function Home({ user, isLoggedIn, onLogout }) {
           onCategoryChange={changeCategory}
           onReadAloud={handleReadAloud}
           onExport={handleExportNote}
+          onDeleteAttachment={handleDeleteAttachment}
+          onDownloadAttachment={handleDownloadAttachment}
+          deletingAttachmentId={deletingAttachmentId}
           speechState={speechReader.getNoteSpeechState(id)}
           openMenuId={openMenuNoteId}
           onOpenMenu={openNoteMenu}
@@ -812,6 +957,7 @@ function Home({ user, isLoggedIn, onLogout }) {
         isPinned={isPinned}
         category={noteItem.category || "none"}
         voiceNote={noteItem.voice_note}
+        attachments={noteItem.attachments || []}
         onDelete={confirmDelete}
         onEdit={editNoteHandler}
         onColorChange={changeNoteColor}
@@ -819,6 +965,9 @@ function Home({ user, isLoggedIn, onLogout }) {
         onCategoryChange={changeCategory}
         onReadAloud={handleReadAloud}
         onExport={handleExportNote}
+        onDeleteAttachment={handleDeleteAttachment}
+        onDownloadAttachment={handleDownloadAttachment}
+        deletingAttachmentId={deletingAttachmentId}
         speechState={speechReader.getNoteSpeechState(id)}
         openMenuId={openMenuNoteId}
         onOpenMenu={openNoteMenu}
@@ -900,6 +1049,7 @@ function Home({ user, isLoggedIn, onLogout }) {
           editNote={{ title: "", content: "" }}
           isLoggedIn={isLoggedIn}
           onGuestVoiceAction={() => setShowGuestVoiceUpgrade(true)}
+          onGuestAttachmentAction={() => setShowGuestAttachmentUpgrade(true)}
         />
       </div>
 
@@ -1059,6 +1209,11 @@ function Home({ user, isLoggedIn, onLogout }) {
         onClose={() => setShowGuestVoiceUpgrade(false)}
       />
 
+      <GuestAttachmentUpgradeModal
+        open={showGuestAttachmentUpgrade}
+        onClose={() => setShowGuestAttachmentUpgrade(false)}
+      />
+
       <Footer />
 
       {/* EDIT MODAL */}
@@ -1197,6 +1352,50 @@ function Home({ user, isLoggedIn, onLogout }) {
                   onRecordingComplete={handleModalRecordingComplete}
                   onRecordingDelete={handleModalRecordingDelete}
                   onGuestAction={() => setShowGuestVoiceUpgrade(true)}
+                  disabled={modalSaving}
+                />
+              </div>
+            </div>
+
+            <div className="modal-voice-section modal-attachments-section">
+              <div className="modal-voice-heading">
+                <span className="material-icons">attach_file</span>
+                <span>Attachments</span>
+              </div>
+
+              <AttachmentList
+                attachments={modalAttachments}
+                onDelete={handleDeleteModalAttachment}
+                onDownload={handleDownloadAttachment}
+                deletingId={deletingAttachmentId}
+                isDark={modalColor === "#232323"}
+              />
+
+              <SelectedFilesPreview
+                files={modalNewAttachmentFiles}
+                onRemove={(index) =>
+                  setModalNewAttachmentFiles((prev) =>
+                    prev.filter((_, i) => i !== index),
+                  )
+                }
+                disabled={modalSaving}
+              />
+
+              <div className="modal-recorder-wrap">
+                <p className="modal-voice-help">
+                  {modalAttachments.length + modalNewAttachmentFiles.length > 0
+                    ? "Add more files or remove existing ones."
+                    : "Attach files to save with this note."}
+                </p>
+                <AttachmentPicker
+                  currentCount={
+                    modalAttachments.length + modalNewAttachmentFiles.length
+                  }
+                  onFilesAdded={(files) =>
+                    setModalNewAttachmentFiles((prev) => [...prev, ...files])
+                  }
+                  isLoggedIn={isLoggedIn}
+                  onGuestAction={() => setShowGuestAttachmentUpgrade(true)}
                   disabled={modalSaving}
                 />
               </div>

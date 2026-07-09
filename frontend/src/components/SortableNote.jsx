@@ -31,6 +31,7 @@ function SortableNote(props) {
         isPinned={props.isPinned}
         category={props.category}
         voiceNote={props.voiceNote}
+        attachments={props.attachments}
         onDelete={props.onDelete}
         onEdit={props.onEdit}
         onColorChange={props.onColorChange}
@@ -38,6 +39,9 @@ function SortableNote(props) {
         onCategoryChange={props.onCategoryChange}
         onReadAloud={props.onReadAloud}
         onExport={props.onExport}
+        onDeleteAttachment={props.onDeleteAttachment}
+        onDownloadAttachment={props.onDownloadAttachment}
+        deletingAttachmentId={props.deletingAttachmentId}
         speechState={props.speechState}
         /* NEW: single-open-menu controller props */
         openMenuId={props.openMenuId}

@@ -20,6 +20,18 @@ function getVoiceMetadata(note) {
   };
 }
 
+// ✅ Attachments export support — filenames + sizes only, never binary data.
+function getAttachmentsMetadata(note) {
+  const attachments = note.attachments;
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+
+  return attachments.map((attachment) => ({
+    original_name: safeString(attachment.original_name),
+    file_size:
+      typeof attachment.file_size === "number" ? attachment.file_size : null,
+  }));
+}
+
 export function normalizeExportNotes(notes) {
   if (!Array.isArray(notes)) return [];
 
@@ -40,6 +52,11 @@ export function normalizeExportNotes(notes) {
         normalized.voice_note = voice;
       }
 
+      const attachments = getAttachmentsMetadata(note);
+      if (attachments) {
+        normalized.attachments = attachments;
+      }
+
       return normalized;
     });
 }
@@ -49,6 +66,23 @@ function formatDisplayDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return safeString(value);
   return date.toISOString().slice(0, 10);
+}
+
+// ✅ Small, self-contained byte formatter — kept local so this file stays
+// free of cross-file imports, matching its existing style.
+function formatBytesForExport(bytes) {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
+    return "";
+  }
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 export function formatNotesAsTxt(notes) {
@@ -74,6 +108,18 @@ export function formatNotesAsTxt(notes) {
           `Voice Duration: ${note.voice_note.duration ?? "Not available"}`,
           `Voice Audio URL: ${note.voice_note.audio_url || "Not available"}`,
         );
+      }
+
+      if (note.attachments) {
+        lines.push(`Attachments: ${note.attachments.length}`);
+        note.attachments.forEach((attachment) => {
+          const sizeLabel = formatBytesForExport(attachment.file_size);
+          lines.push(
+            `  - ${attachment.original_name || "Untitled file"}${
+              sizeLabel ? ` (${sizeLabel})` : ""
+            }`,
+          );
+        });
       }
 
       lines.push("", "Content:", "", note.content || "", "⸻");

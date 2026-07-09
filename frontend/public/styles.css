@@ -151,6 +151,10 @@ footer p {
 .create-voice-row {
   margin-top: 10px;
   padding-right: 46px;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 @keyframes fadeIn {
@@ -717,6 +721,7 @@ button:disabled {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -727,6 +732,7 @@ button:disabled {
     opacity: 0;
     transform: translateY(20px) scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -734,6 +740,7 @@ button:disabled {
 }
 
 @media (max-width: 600px) {
+
   .auth-card,
   .guest-import-card,
   .guest-voice-card,
@@ -1037,6 +1044,10 @@ button:disabled {
 
   .create-voice-row {
     padding-right: 0;
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .audio-preview-actions {
@@ -1223,7 +1234,8 @@ button:disabled {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   animation: modalSlideIn 0.2s ease;
 }
 
@@ -1356,6 +1368,8 @@ button:disabled {
   flex-shrink: 0;
   padding: 0 16px 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .modal-voice-heading {
@@ -1398,7 +1412,7 @@ button:disabled {
   font-weight: 600;
 }
 
-.modal-voice-deleted-message > span:nth-child(2) {
+.modal-voice-deleted-message>span:nth-child(2) {
   flex: 1;
 }
 
@@ -1902,6 +1916,7 @@ button:disabled {
   justify-content: center;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  flex-shrink: 0;
 }
 
 .voice-recorder-btn:hover {
@@ -2218,6 +2233,7 @@ button:disabled {
 }
 
 @keyframes recordPulse {
+
   0%,
   100% {
     opacity: 0.45;
@@ -2231,6 +2247,7 @@ button:disabled {
 }
 
 @keyframes voiceWave {
+
   0%,
   100% {
     height: 9px;
@@ -2242,18 +2259,18 @@ button:disabled {
 }
 
 /* ======= DRAG AND DROP ======= */
-.notes-grid > div {
+.notes-grid>div {
   break-inside: avoid;
   display: inline-block;
   width: 100%;
   margin-bottom: 16px;
 }
 
-.notes-grid > div[style*="grab"] {
+.notes-grid>div[style*="grab"] {
   cursor: grab;
 }
 
-.notes-grid > div:active {
+.notes-grid>div:active {
   cursor: grabbing;
 }
 
@@ -2375,9 +2392,12 @@ button:disabled {
 }
 
 @keyframes noteReadingGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 8px 24px rgba(245, 186, 19, 0.18);
   }
+
   50% {
     box-shadow: 0 10px 30px rgba(245, 186, 19, 0.40);
   }
@@ -2431,10 +2451,13 @@ button:disabled {
 }
 
 @keyframes speakerPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 0.75;
   }
+
   50% {
     transform: scale(1.18);
     opacity: 1;
@@ -2672,6 +2695,7 @@ button:disabled {
 .note-actions .note-export-menu button:hover {
   transform: none;
 }
+
 /* ============================================================
    ✅ NOTE ACTION SYSTEM v2  (Read + More ⋮  →  portal menu)
    Replaces all previous .note-export-*, .note-more-*,
@@ -2764,7 +2788,8 @@ button:disabled {
    ------------------------------------------------------------ */
 .note-menu-panel {
   position: fixed;
-  z-index: 13000;            /* above modals' note layer, below overlays */
+  z-index: 13000;
+  /* above modals' note layer, below overlays */
   width: 220px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
@@ -2965,7 +2990,8 @@ button:disabled {
    ------------------------------------------------------------ */
 @media (max-width: 768px) {
   .note-actions {
-    opacity: 1;           /* always visible on touch devices */
+    opacity: 1;
+    /* always visible on touch devices */
   }
 }
 
@@ -2975,7 +3001,8 @@ button:disabled {
   }
 
   .read-aloud-label {
-    display: none;        /* keep Read compact on phones */
+    display: none;
+    /* keep Read compact on phones */
   }
 
   .note-actions .read-aloud-btn {
@@ -2989,4 +3016,287 @@ button:disabled {
   object-fit: contain;
   margin-right: 8px;
   vertical-align: middle;
+}
+
+/* ======= ATTACHMENTS ======= */
+
+.attach-file-input {
+  display: none;
+}
+
+.selected-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.selected-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fffaf0;
+  border: 1px solid rgba(245, 186, 19, 0.28);
+  font-size: 13px;
+}
+
+.selected-file-icon {
+  font-size: 18px;
+  color: #f5ba13;
+  flex-shrink: 0;
+}
+
+.selected-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555;
+  font-weight: 600;
+}
+
+.selected-file-size {
+  color: #777;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.selected-file-remove {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  color: #999;
+  padding: 3px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.selected-file-remove:hover {
+  background: rgba(211, 47, 47, 0.1);
+  color: #d32f2f;
+}
+
+.selected-file-remove .material-icons {
+  font-size: 16px;
+}
+
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(245, 186, 19, 0.12);
+  border: 1px solid rgba(245, 186, 19, 0.22);
+  max-width: 220px;
+}
+
+.attachment-list-dark .attachment-chip {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.attachment-thumb-btn,
+.attachment-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.attachment-thumb {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.attachment-icon {
+  font-size: 26px;
+  color: #f5ba13;
+}
+
+.attachment-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachment-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-list-dark .attachment-name {
+  color: #f3f3f3;
+}
+
+.attachment-size {
+  font-size: 11px;
+  color: #777;
+}
+
+.attachment-list-dark .attachment-size {
+  color: #ddd;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.attachment-download-btn,
+.attachment-delete-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  color: #999;
+  padding: 3px;
+  border-radius: 50%;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.attachment-download-btn .material-icons,
+.attachment-delete-btn .material-icons {
+  font-size: 16px;
+}
+
+.attachment-list-dark .attachment-download-btn,
+.attachment-list-dark .attachment-delete-btn {
+  color: #ccc;
+}
+
+.attachment-download-btn:hover {
+  background: rgba(245, 186, 19, 0.18);
+  color: #a36e00;
+}
+
+.attachment-delete-btn:hover {
+  background: rgba(211, 47, 47, 0.1);
+  color: #d32f2f;
+}
+
+.attachment-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .attachment-chip {
+    max-width: 100%;
+  }
+}
+
+/* =========================================================================
+   ✅ EDIT MODAL — STICKY FOOTER + SCROLLABLE ATTACHMENT LIST (UI/UX only)
+   Goal: Save/Cancel, the Attachments heading, and the paperclip button
+   stay visible. ONLY the attachment chips/list scrolls.
+   Pure layout — no attachment logic, no state, no JSX structure changes.
+   ========================================================================= */
+
+/* 1) Make the footer stick to the bottom of the scrolling modal card so
+      Save/Cancel are ALWAYS visible, no matter how many attachments. */
+.modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  /* match the card so it doesn't look transparent while content scrolls
+     underneath; the card's background comes from inline style, so use a
+     neutral backdrop that blends on both light & dark note colors */
+  background: inherit;
+  backdrop-filter: saturate(1.1);
+}
+
+/* 2) The attachments section becomes a flex column so we can pin its
+      heading + picker while letting only the list scroll.
+      It shares .modal-voice-section styling; we only refine THIS block. */
+.modal-attachments-section {
+  display: flex;
+  flex-direction: column;
+  /* Let this section stop growing unbounded; the inner list scrolls. */
+  max-height: 320px;
+  /* Override the generic .modal-voice-section scroll so the SECTION itself
+     does not scroll — only the inner list will. */
+  overflow: visible;
+}
+
+/* Heading ("Attachments") stays pinned at the top of the section. */
+.modal-attachments-section .modal-voice-heading {
+  flex-shrink: 0;
+}
+
+/* 3) The scrollable region: existing attachments + newly selected files.
+      These two lists sit directly after the heading, so we let them scroll
+      together as the "attachment list" area. */
+.modal-attachments-section .attachment-list,
+.modal-attachments-section .selected-files-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Give the combined list area a sensible cap so the picker below is always
+   reachable. When there are few attachments it shrinks naturally. */
+.modal-attachments-section .attachment-list {
+  max-height: 200px;
+  padding-right: 4px; /* room for scrollbar so chips don't clip */
+}
+
+.modal-attachments-section .selected-files-list {
+  max-height: 160px;
+  padding-right: 4px;
+}
+
+/* 4) The help text + paperclip Add Attachment button stay pinned at the
+      bottom of the section — ALWAYS visible without scrolling. */
+.modal-attachments-section .modal-recorder-wrap {
+  flex-shrink: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  margin-top: 8px;
+}
+
+/* Dark note color: soften the divider so it stays subtle. */
+.modal-card[style*="#232323"] .modal-attachments-section .modal-recorder-wrap {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 5) Mobile: keep the same behavior but a bit more compact. */
+@media (max-width: 480px) {
+  .modal-attachments-section {
+    max-height: 280px;
+  }
+  .modal-attachments-section .attachment-list {
+    max-height: 150px;
+  }
+  .modal-attachments-section .selected-files-list {
+    max-height: 120px;
+  }
 }

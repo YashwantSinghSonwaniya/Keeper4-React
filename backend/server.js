@@ -6,6 +6,7 @@ require("dotenv").config();
 const authRoutes = require("./routes/auth");
 const notesRoutes = require("./routes/notes");
 const voiceNotesRoutes = require("./routes/voiceNotes");
+const attachmentsRoutes = require("./routes/attachments");
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/notes", notesRoutes);
 app.use("/api/voice-notes", voiceNotesRoutes);
+app.use("/api/attachments", attachmentsRoutes);
 
 // Health check
 app.get("/", (req, res) => {
